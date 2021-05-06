@@ -11,7 +11,8 @@ import datetime
 CONFIG_PATH = '~/.config/cmus/cmus_status_scrobbler.ini'
 
 parser = argparse.ArgumentParser(description="Scrobbling.")
-parser.add_argument('--ini', type=argparse.FileType('r'),
+parser.add_argument('--ini',
+                    type=argparse.FileType('r'),
                     default=os.path.expanduser(CONFIG_PATH))
 parser.add_argument('--now-playing', type=bool, default=True, required=False)
 parser.add_argument('--api-url', type=str, required=False)
@@ -36,19 +37,11 @@ class Log:
         logging.info(msg.format(track.file))
 
 
-Status = namedtuple(
-    'Status', ['status',
-               'file',
-               'artist',
-               'albumartist',
-               'album',
-               'discnumber',
-               'tracknumber',
-               'title',
-               'date',
-               'duration',
-               'musicbrainz_trackid',
-               'cur_time'])
+Status = namedtuple('Status', [
+    'status', 'file', 'artist', 'albumartist', 'album', 'discnumber',
+    'tracknumber', 'title', 'date', 'duration', 'musicbrainz_trackid',
+    'cur_time'
+])
 
 
 class Scrobbler:
@@ -78,15 +71,16 @@ class ScrobbleCache:
 
 
 def parse_cmus_status_line(ls):
-    r = dict(cur_time=datetime.datetime.utcnow(),
-             musicbrainz_trackid=None,
-             discnumber=1,
-             tracknumber=None,
-             date=None,
-             album=None,
-             albumartist=None,
-             artist=None,
-             )
+    r = dict(
+        cur_time=datetime.datetime.utcnow(),
+        musicbrainz_trackid=None,
+        discnumber=1,
+        tracknumber=None,
+        date=None,
+        album=None,
+        albumartist=None,
+        artist=None,
+    )
     r.update((k, v) for k, v in zip(ls[::2], ls[1::2]))
     logging.info(r)
     return Status(**r)
@@ -98,7 +92,7 @@ def has_played_enough(start_ts, end_ts, duration, perc_thresh, secs_thresh):
     return total / duration >= perc_thresh or total >= secs_thresh
 
 
-def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4*60):
+def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4 * 60):
     scrobbles, leftovers = [], []
     if not status_updates or len(status_updates) == 1:
         return scrobbles, leftovers
@@ -108,11 +102,11 @@ def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4*60):
         if cur.status == CmusStatus.stopped:
             continue
 
-        hpe = has_played_enough(cur.cur_time, nxt.cur_time,
-                                cur.duration, perc_thresh, secs_thresh)
+        hpe = has_played_enough(cur.cur_time, nxt.cur_time, cur.duration,
+                                perc_thresh, secs_thresh)
 
-        if (cur.file != nxt.file or nxt.status in [CmusStatus.stopped,
-                                                   CmusStatus.playing]):
+        if (cur.file != nxt.file
+                or nxt.status in [CmusStatus.stopped, CmusStatus.playing]):
             if hpe:
                 scrobbles.append(cur)
             continue

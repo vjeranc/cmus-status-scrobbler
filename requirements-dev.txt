@@ -1,2 +1,4 @@
+yapf
+pycodestyle
+python-language-server
 flake8
-autopep8
