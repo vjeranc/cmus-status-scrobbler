@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import sys
-import time
 import urllib.parse as up
 import urllib.request as ur
 
@@ -54,10 +53,26 @@ def get_api_sig(params, secret=None):
     return m.hexdigest()
 
 
+def send_req(api_url, api_key, shared_secret=None, method=None, **params):
+    params = dict(**params)
+    params['api_key'] = api_key
+    params['method'] = method
+    if shared_secret:
+        params['api_sig'] = get_api_sig(params, secret=shared_secret)
+    params['format'] = 'json'
+    logging.info(params)
+    api_req = ur.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
+
+    with ur.urlopen(api_req, up.urlencode(params).encode('utf-8')) as f:
+        return json.loads(f.read().decode('utf-8'))
+
+
 class Scrobbler:
-    def __init__(self, api_key, shared_secret):
+    def __init__(self, api_url, api_key, shared_secret, session_key):
+        self.api_url = api_url
         self.api_key = api_key
         self.shared_secret = shared_secret
+        self.sk = session_key
 
     def auth():
         pass
@@ -65,9 +80,24 @@ class Scrobbler:
     def scrobble():
         pass
 
-    def send_now_playing(cur_status):
-        if cur_status.status != CmusStatus.playing:
+    def send_now_playing(self, cur):
+        if cur.status != CmusStatus.playing:
             return
+        params = dict(artist=cur.artist,
+                      track=cur.title,
+                      album=cur.album,
+                      trackNumber=cur.tracknumber,
+                      duration=cur.duration,
+                      sk=self.sk)
+        if cur.albumartist is not None and cur.artist != cur.albumartist:
+            params['albumArtist'] = cur.albumartist
+        if cur.musicbrainz_trackid is not None:
+            params['mbid'] = cur.musicbrainz_trackid
+        send_req(self.api_url,
+                 self.api_key,
+                 shared_secret=self.shared_secret,
+                 method=ScrobblerMethod.NOW_PLAYING,
+                 **params)
 
 
 class ScrobbleCache:
@@ -135,19 +165,6 @@ class ScrobblerMethod:
     NOW_PLAYING = 'track.updateNowPlaying'
 
 
-def send_req(api_url, api_key, shared_secret=None, method=None, **params):
-    params = dict(**params)
-    params['api_key'] = api_key
-    params['method'] = method
-    if shared_secret:
-        params['api_sig'] = get_api_sig(params, secret=shared_secret)
-    params['format'] = 'json'
-    api_req = ur.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
-
-    with ur.urlopen(api_req, up.urlencode(params).encode('utf-8')) as f:
-        return json.loads(f.read().decode('utf-8'))
-
-
 def authenticate(auth_url, api_url, api_key, shared_secret):
     # fetching token that is used to ask for access
     # headers= makes it work on libre.fm
@@ -164,14 +181,18 @@ def authenticate(auth_url, api_url, api_key, shared_secret):
     return dict(session_key=session['key'], username=session['name'])
 
 
-if __name__ == "__main__":
+def main():
     logging.basicConfig(
         filename='/home/vjeran/.config/cmus/cmus_scrobbler.log',
         encoding='utf-8',
         level=logging.DEBUG,
     )
-    args = parser.parse_args()
-    print(args)
+    logging.info('Starting...')
+    logging.info('Parsing arguments')
+    logging.info(sys.argv[1:])
+    args, _ = parser.parse_known_args()
+    logging.info('Arguments parsed')
+    logging.info(args)
     conf_path = args.ini
     if not os.path.exists(conf_path):
         raise FileNotFoundError(f'{conf_path} does not exist.')
@@ -189,14 +210,25 @@ if __name__ == "__main__":
             print(f'Session key already active for {section}. Skipping...')
             continue
         conf[section].update(
-            authenticate(
-                conf[section]['auth_url'], conf[section]['api_url'],
-                conf[section].get('api_key', None) or api_key,
-                conf[section].get('shared_secret', None) or shared_secret))
+            authenticate(conf[section]['auth_url'], conf[section]['api_url'],
+                         conf[section].get('api_key') or api_key,
+                         conf[section].get('shared_secret') or shared_secret))
         with open(conf_path, 'w') as f:
             conf.write(f)
+    status = parse_cmus_status_line(sys.argv[1:])
+    logging.info(repr(status))
+    for section in conf.sections():
+        if section == 'global':
+            continue
+        scr = Scrobbler(conf[section]['api_url'], conf[section].get('api_key')
+                        or api_key, conf[section].get('shared_secret')
+                        or shared_secret, conf[section]['session_key'])
+        scr.send_now_playing(status)
 
+
+if __name__ == "__main__":
     try:
-        logging.info(repr(parse_cmus_status_line(sys.argv[1:])))
+        main()
     except Exception as e:
+        logging.error('Error happened')
         logging.error(e)
