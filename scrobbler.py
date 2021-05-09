@@ -44,11 +44,14 @@ if __name__ == "__main__":
     cfg_path = './cmus_status_scrobbler.ini'
     with open(cfg_path) as f:
         conf.read_file(f)
-    api_key, shared_secret = None, None  # using global ones if local not defined
+    api_key, shared_secret = None, None  # using global if local not defined
     for section in conf.sections():
         if section == 'global':
             api_key = conf[section]['api_key']
             shared_secret = conf[section]['shared_secret']
+            continue
+        if 'session_key' in conf[section]:
+            print(f'Session key already active for {section}. Skipping...')
             continue
         conf[section].update(
             authenticate(
