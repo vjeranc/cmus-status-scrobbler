@@ -23,8 +23,10 @@ def get_api_sig(params, secret=None):
 
 def authenticate(auth_url, api_url, api_key, shared_secret):
     # fetching token that is used to ask for access
+    # headers= makes it work on libre.fm
+    api_req = ur.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
     with ur.urlopen(
-            api_url,
+            api_req,
             up.urlencode(dict(method=GET_TOKEN, api_key=api_key,
                               format='json')).encode('utf-8')) as f:
         token = json.loads(f.read().decode('utf-8'))['token']
@@ -34,7 +36,7 @@ def authenticate(auth_url, api_url, api_key, shared_secret):
     params = dict(method=GET_SESSION, api_key=api_key, token=token)
     params['api_sig'] = get_api_sig(params, secret=shared_secret)
     params['format'] = 'json'
-    with ur.urlopen(api_url, up.urlencode(params).encode('utf-8')) as f:
+    with ur.urlopen(api_req, up.urlencode(params).encode('utf-8')) as f:
         session = json.loads(f.read().decode('utf-8'))['session']
     return dict(session_key=session['key'], username=session['name'])
 
