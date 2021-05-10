@@ -134,6 +134,9 @@ class TestCalculateScrobbles(unittest.TestCase):
                     file='A',
                     status=CmusStatus.stopped)
         ]
+        scrobbles, leftovers = calculate_scrobbles(ss[:6])
+        self.assertEqual([], scrobbles)
+        self.assertEqual(5, len(leftovers))
         # trying out with last second missing from scrobblable playtime
         scrobbles, leftovers = calculate_scrobbles(ss[:-3] + [ss[-1]])
         self.assertEqual([], leftovers)
