@@ -10,6 +10,7 @@ import sys
 import urllib.parse as up
 import urllib.request as ur
 import itertools as it
+from operator import attrgetter
 
 CONFIG_PATH = '~/.config/cmus/cmus_status_scrobbler.ini'
 
@@ -146,34 +147,34 @@ def has_played_enough(start_ts,
 def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4 * 60):
     scrobbles, leftovers = [], []
     if not status_updates or len(status_updates) == 1:
-        return scrobbles, leftovers
+        return scrobbles, status_updates or leftovers
 
-    sus = sorted(status_updates, key='cur_time')
+    sus = sorted(status_updates, key=attrgetter('cur_time'))
     # I am incapable of having simple thoughts. The pause is messing me up.
     # I use these two variables to scrobble paused tracks.
     ptbp = 0  # played time before pausing
-    ptbp_file = None
+    ptbp_status = None
     for cur, nxt, nxt2 in it.zip_longest(sus, sus[1:], sus[2:]):
         if cur.status in [CmusStatus.stopped, CmusStatus.paused]:
             continue
         if nxt is None:
             leftovers.append(cur)
             break
-
-        hpe = has_played_enough(cur.cur_time,
-                                nxt.cur_time,
-                                cur.duration,
-                                perc_thresh,
-                                secs_thresh,
-                                ptbp=ptbp if ptbp_file == cur.file else 0)
-        if ptbp_file is not None:
-            ptbp = 0
-            ptbp_file = None
+        hpe = has_played_enough(
+            cur.cur_time,
+            nxt.cur_time,
+            cur.duration,
+            perc_thresh,
+            secs_thresh,
+            ptbp=ptbp if ptbp_status and ptbp_status.file == cur.file else 0)
 
         if (cur.file != nxt.file
                 or nxt.status in [CmusStatus.stopped, CmusStatus.playing]):
             if hpe:
                 scrobbles.append(cur)
+            if ptbp_status is not None:
+                ptbp = 0
+                ptbp_status = None
             continue
 
         # files are equal and nxt status paused
@@ -184,14 +185,15 @@ def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4 * 60):
 
         if cur.file == nxt2.file and nxt2.status == CmusStatus.playing:
             # playing continued, keeping already played time for next
-            ptbp = (nxt.cur_time - cur.cur_time).total_seconds()
-            ptbp_file = cur.file
+            ptbp += (nxt.cur_time - cur.cur_time).total_seconds()
+            ptbp_status = cur if not ptbp_status else ptbp_status
             continue
         # playing did not continue, nxt2 file is not None and it's either a
         # different file or it's the same file but status is not playing
         # in this case we just check if played enough otherwise no scrobble
         if hpe:
-            scrobbles.append(nxt)
+            scrobbles.append(ptbp_status or cur)
+    return scrobbles, leftovers
 
 
 class ScrobblerMethod:
