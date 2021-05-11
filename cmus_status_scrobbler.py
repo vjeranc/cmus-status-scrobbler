@@ -11,14 +11,44 @@ import urllib.parse as up
 import urllib.request as ur
 import itertools as it
 from operator import attrgetter
+import sqlite3
+import pickle
 
 CONFIG_PATH = '~/.config/cmus/cmus_status_scrobbler.ini'
+DB_PATH = '~/.config/cmus/cmus_status_scrobbler.db'
 
 parser = argparse.ArgumentParser(description="Scrobbling.")
 parser.add_argument('--ini', type=str, default=os.path.expanduser(CONFIG_PATH))
+parser.add_argument('--db-path', type=str, default=os.path.expanduser(DB_PATH))
 parser.add_argument('--now-playing', type=bool, default=True, required=False)
 parser.add_argument('--api-url', type=str, required=False)
 parser.add_argument('--auth-url', type=str, required=False)
+
+
+class StatusDB:
+    def __init__(self, connection, table_name):
+        self.con = connection
+        self.table_name = f'status_updates_{table_name}'
+
+    def create(self):
+        self.con.execute(
+            f"CREATE TABLE IF NOT EXIST {self.table_name} (pickle BLOB)")
+
+    def get_status_updates(self):
+        cur = self.con.cursor()
+        cur.execute(f"SELECT * FROM {self.table_name}")
+        status_updates = []
+        for row in cur:
+            status_updates.append(pickle.loads(row[0]))
+        return status_updates
+
+    def clear(self):
+        self.con.execute(f"DELETE FROM {self.table_name}")
+
+    def save_status_updates(self, status_updates):
+        self.con.executemany(
+            f"INSERT INTO {self.table_name}(pickle) values (?)",
+            [(pickle.dumps(su), ) for su in status_updates])
 
 
 class CmusStatus:
@@ -79,7 +109,8 @@ class Scrobbler:
     def auth():
         pass
 
-    def scrobble():
+    def scrobble(self, status_updates):
+        # TODO bulk scrobble params sort sign
         pass
 
     def send_now_playing(self, cur):
@@ -100,21 +131,6 @@ class Scrobbler:
                  shared_secret=self.shared_secret,
                  method=ScrobblerMethod.NOW_PLAYING,
                  **params)
-
-
-class ScrobbleCache:
-    # O_APPEND synchronous writing to file
-    def __init__(self):
-        pass
-
-    def add():
-        pass
-
-    def remove():
-        pass
-
-    def clear():
-        pass
 
 
 def parse_cmus_status_line(ls):
@@ -251,6 +267,8 @@ def main():
     with open(conf_path, 'r') as f:
         conf.read_file(f)
     api_key, shared_secret = None, None  # using global if local not defined
+    status = parse_cmus_status_line(sys.argv[1:])
+    logging.info(repr(status))
     for section in conf.sections():
         if section == 'global':
             api_key = conf[section]['api_key']
@@ -265,8 +283,6 @@ def main():
                          conf[section].get('shared_secret') or shared_secret))
         with open(conf_path, 'w') as f:
             conf.write(f)
-    status = parse_cmus_status_line(sys.argv[1:])
-    logging.info(repr(status))
     for section in conf.sections():
         if section == 'global':
             continue
