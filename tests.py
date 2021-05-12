@@ -1,7 +1,10 @@
 import unittest
-from cmus_status_scrobbler import calculate_scrobbles, CmusStatus
+from cmus_status_scrobbler import calculate_scrobbles, CmusStatus, StatusDB, update_scrobble_state
 import datetime
 from collections import namedtuple
+import sqlite3
+import os
+import itertools as it
 
 
 def secs(n):
@@ -12,6 +15,10 @@ SS = namedtuple('SS', 'cur_time duration file status')
 
 
 class TestCalculateScrobbles(unittest.TestCase):
+    def assertArrayEqual(self, ar1, ar2):
+        for expected, actual in it.zip_longest(ar1, ar2):
+            self.assertEqual(expected, actual)
+
     def test_simple_play_stop(self):
         d = datetime.datetime.utcnow()
         ss = [
@@ -122,8 +129,7 @@ class TestCalculateScrobbles(unittest.TestCase):
         scrobbles, leftovers = calculate_scrobbles(ss[:6])
         self.assertEqual([], scrobbles)
         self.assertEqual(6, len(leftovers))
-        for expected, actual in zip(ss[:6], leftovers):
-            self.assertEqual(expected, actual)
+        self.assertArrayEqual(ss[:6], leftovers)
         # trying out with last second missing from scrobblable playtime
         scrobbles, leftovers = calculate_scrobbles(ss[:-3] + [ss[-1]])
         self.assertEqual([], leftovers)
@@ -183,8 +189,64 @@ class TestCalculateScrobbles(unittest.TestCase):
         scrobbles, leftovers = calculate_scrobbles(ss)
         self.assertEqual(6, len(scrobbles))
         self.assertEqual([], leftovers)
-        for expected, actual in zip(ss, scrobbles):
+        self.assertArrayEqual(ss[:-1], scrobbles)
+
+
+DB_FILE = 'test.sqlite3'
+
+
+class TestStatusDB(unittest.TestCase):
+    def setUp(self):
+        self.con = sqlite3.connect(DB_FILE)
+
+    def tearDown(self):
+        self.con = None
+        os.remove(DB_FILE)
+
+    def build_db(self):
+        return StatusDB(self.con, 'test_table_name')
+
+    def assertArrayEqual(self, ar1, ar2):
+        for expected, actual in it.zip_longest(ar1, ar2):
             self.assertEqual(expected, actual)
+
+    def test_update(self):
+        d = datetime.datetime.now()
+        sus = [
+            SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
+            SS(cur_time=d + secs(1),
+               duration=5,
+               file='A',
+               status=CmusStatus.paused)
+        ]
+        new_su = SS(cur_time=d + secs(3),
+                    duration=5,
+                    file='A',
+                    status=CmusStatus.playing)
+        with self.con:
+            db = self.build_db()
+            db.save_status_updates(sus)
+            self.assertArrayEqual(sus, db.get_status_updates())
+            update_scrobble_state(db, new_su)
+            n_sus = db.get_status_updates()
+            self.assertArrayEqual(sus + [new_su], n_sus)
+
+    def test_scrobble_update(self):
+        # some tracks will scrobble and will no longer be stored
+        d = datetime.datetime.now()
+        sus = [
+            SS(cur_time=d, duration=10, file='B', status=CmusStatus.playing)
+        ]
+        new_su = SS(cur_time=d + secs(10),
+                    duration=5,
+                    file='A',
+                    status=CmusStatus.playing)
+        with self.con:
+            db = self.build_db()
+            db.save_status_updates(sus)
+            update_scrobble_state(db, new_su)
+            n_sus = db.get_status_updates()
+            self.assertArrayEqual([new_su], n_sus)
 
 
 if __name__ == '__main__':

@@ -13,9 +13,10 @@ import itertools as it
 from operator import attrgetter
 import sqlite3
 import pickle
+from functools import reduce
 
 CONFIG_PATH = '~/.config/cmus/cmus_status_scrobbler.ini'
-DB_PATH = '~/.config/cmus/cmus_status_scrobbler.db'
+DB_PATH = '~/.config/cmus/cmus_status_scrobbler.sqlite3'
 
 parser = argparse.ArgumentParser(description="Scrobbling.")
 parser.add_argument('--ini', type=str, default=os.path.expanduser(CONFIG_PATH))
@@ -29,10 +30,11 @@ class StatusDB:
     def __init__(self, connection, table_name):
         self.con = connection
         self.table_name = f'status_updates_{table_name}'
+        self.create()
 
     def create(self):
         self.con.execute(
-            f"CREATE TABLE IF NOT EXIST {self.table_name} (pickle BLOB)")
+            f"CREATE TABLE IF NOT EXISTS {self.table_name} (pickle BLOB)")
 
     def get_status_updates(self):
         cur = self.con.cursor()
@@ -89,14 +91,16 @@ def send_req(api_url, api_key, shared_secret=None, method=None, **params):
     params = dict(**params)
     params['api_key'] = api_key
     params['method'] = method
+    params = {k: v for k, v in params.items() if v is not None}
     if shared_secret:
         params['api_sig'] = get_api_sig(params, secret=shared_secret)
     params['format'] = 'json'
     logging.info(params)
     api_req = ur.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
-
     with ur.urlopen(api_req, up.urlencode(params).encode('utf-8')) as f:
-        return json.loads(f.read().decode('utf-8'))
+        res = f.read().decode('utf-8')
+        logging.info(res)
+        return json.loads(res) if res else None
 
 
 class Scrobbler:
@@ -109,9 +113,48 @@ class Scrobbler:
     def auth():
         pass
 
+    def make_scrobble(self, i, su):
+        return {
+            f'artist[{i}]':
+            su.artist,
+            f'track[{i}]':
+            su.title,
+            f'timestamp[{i}]':
+            str(
+                int(
+                    su.cur_time.replace(
+                        tzinfo=datetime.timezone.utc).timestamp())),
+            f'album[{i}]':
+            su.album,
+            f'trackNumber[{i}]':
+            su.tracknumber,
+            f'mbid[{i}]':
+            su.musicbrainz_trackid,
+            f'albumArtist[{i}]':
+            su.albumartist if su.artist != su.albumartist else None,
+            f'duration[{i}]':
+            su.duration,
+        }
+
     def scrobble(self, status_updates):
-        # TODO bulk scrobble params sort sign
-        pass
+        if not status_updates:
+            return
+        # ignoring status updates with status other than playing
+        # TODO do batches of 50
+        playing_sus = filter(lambda x: x.status == CmusStatus.playing,
+                             status_updates)
+        batch_scrobble_request = reduce(lambda a, b: {
+            **a,
+            **b
+        }, [self.make_scrobble(i, su) for (i, su) in enumerate(playing_sus)],
+                                        dict(sk=self.sk))
+        if not batch_scrobble_request:
+            return
+        send_req(self.api_url,
+                 self.api_key,
+                 shared_secret=self.shared_secret,
+                 method=ScrobblerMethod.SCROBBLE,
+                 **batch_scrobble_request)
 
     def send_now_playing(self, cur):
         if cur.status != CmusStatus.playing:
@@ -121,11 +164,10 @@ class Scrobbler:
                       album=cur.album,
                       trackNumber=cur.tracknumber,
                       duration=cur.duration,
+                      albumArtist=cur.albumartist
+                      if cur.artist != cur.albumartist else None,
+                      mbid=cur.musicbrainz_trackid,
                       sk=self.sk)
-        if cur.albumartist is not None and cur.artist != cur.albumartist:
-            params['albumArtist'] = cur.albumartist
-        if cur.musicbrainz_trackid is not None:
-            params['mbid'] = cur.musicbrainz_trackid
         send_req(self.api_url,
                  self.api_key,
                  shared_secret=self.shared_secret,
@@ -145,7 +187,6 @@ def parse_cmus_status_line(ls):
         artist=None,
     )
     r.update((k, v) for k, v in zip(ls[::2], ls[1::2]))
-    logging.info(r)
     return Status(**r)
 
 
@@ -205,9 +246,8 @@ def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4 * 60):
                 or nxt.status in [CmusStatus.stopped, CmusStatus.playing]):
             if hpe:
                 scrobbles.append(cur)
-            if ptbp_status is not None:
-                ptbp = 0
-                ptbp_status = None
+            ptbp = 0
+            ptbp_status = None
             continue
 
         # files are equal and nxt status paused
@@ -233,9 +273,11 @@ class ScrobblerMethod:
     GET_TOKEN = 'auth.gettoken'
     GET_SESSION = 'auth.getsession'
     NOW_PLAYING = 'track.updateNowPlaying'
+    SCROBBLE = 'track.scrobble'
 
 
 def authenticate(auth_url, api_url, api_key, shared_secret):
+    # TODO move to scrobbler
     # fetching token that is used to ask for access
     # headers= makes it work on libre.fm
     token = send_req(api_url, api_key,
@@ -249,6 +291,17 @@ def authenticate(auth_url, api_url, api_key, shared_secret):
                        method=ScrobblerMethod.GET_SESSION,
                        token=token)['session']
     return dict(session_key=session['key'], username=session['name'])
+
+
+def update_scrobble_state(db, scrobbler, new_status_update):
+    sus = db.get_status_updates()
+    sus.append(new_status_update)
+    scrobbles, leftovers = calculate_scrobbles(sus)
+    # scrobble the scrobbles, if fails then just append the new status update
+    # to the db.
+    scrobbler.scrobble(scrobbles)
+    db.clear()
+    db.save_status_updates(leftovers)
 
 
 def main():
@@ -270,35 +323,40 @@ def main():
     conf = configparser.ConfigParser()
     with open(conf_path, 'r') as f:
         conf.read_file(f)
-    api_key, shared_secret = None, None  # using global if local not defined
-    status = parse_cmus_status_line(sys.argv[1:])
-    logging.info(repr(status))
-    for section in conf.sections():
-        if section == 'global':
-            api_key = conf[section]['api_key']
-            shared_secret = conf[section]['shared_secret']
-            continue
-        if 'session_key' in conf[section]:
-            print(f'Session key already active for {section}. Skipping...')
-            continue
-        conf[section].update(
-            authenticate(conf[section]['auth_url'], conf[section]['api_url'],
-                         conf[section].get('api_key') or api_key,
-                         conf[section].get('shared_secret') or shared_secret))
-        with open(conf_path, 'w') as f:
-            conf.write(f)
-    for section in conf.sections():
-        if section == 'global':
-            continue
-        scr = Scrobbler(conf[section]['api_url'], conf[section].get('api_key')
-                        or api_key, conf[section].get('shared_secret')
-                        or shared_secret, conf[section]['session_key'])
-        scr.send_now_playing(status)
+    with sqlite3.connect(conf['global'].get('db_path') or args.db_path) as con:
+        api_key, shared_secret = None, None  # using global if local not defined
+        status = parse_cmus_status_line(sys.argv[1:])
+        logging.info(repr(status))
+        for section in conf.sections():
+            if section == 'global':
+                api_key = conf[section].get('api_key')
+                shared_secret = conf[section].get('shared_secret')
+                continue
+            if 'session_key' in conf[section]:
+                print(f'Session key already active for {section}. Skipping...')
+                continue
+            conf[section].update(
+                authenticate(
+                    conf[section]['auth_url'], conf[section]['api_url'],
+                    conf[section].get('api_key') or api_key,
+                    conf[section].get('shared_secret') or shared_secret))
+            with open(conf_path, 'w') as f:
+                conf.write(f)
+        for section in conf.sections():
+            if section == 'global':
+                continue
+            logging.info(f'Scrobbling {section}')
+            scr = Scrobbler(
+                conf[section]['api_url'], conf[section].get('api_key')
+                or api_key, conf[section].get('shared_secret')
+                or shared_secret, conf[section]['session_key'])
+            if status.status == CmusStatus.playing:
+                scr.send_now_playing(status)
+            update_scrobble_state(StatusDB(con, section), scr, status)
 
 
 if __name__ == "__main__":
     try:
         main()
-    except Exception as e:
-        logging.error('Error happened')
-        logging.error(e)
+    except Exception:
+        logging.exception('Error happened')
