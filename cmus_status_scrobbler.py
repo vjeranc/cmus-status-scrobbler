@@ -323,7 +323,9 @@ def main():
     conf = configparser.ConfigParser()
     with open(conf_path, 'r') as f:
         conf.read_file(f)
-    with sqlite3.connect(conf['global'].get('db_path') or args.db_path) as con:
+    # TODO test concurrent writes, db should be locked immediatelly
+    with sqlite3.connect(conf['global'].get('db_path', args.db_path),
+                         timeout=60) as con:
         api_key, shared_secret = None, None  # using global if local not defined
         status = parse_cmus_status_line(sys.argv[1:])
         logging.info(repr(status))
@@ -336,20 +338,21 @@ def main():
                 print(f'Session key already active for {section}. Skipping...')
                 continue
             conf[section].update(
-                authenticate(
-                    conf[section]['auth_url'], conf[section]['api_url'],
-                    conf[section].get('api_key') or api_key,
-                    conf[section].get('shared_secret') or shared_secret))
+                authenticate(conf[section]['auth_url'],
+                             conf[section]['api_url'],
+                             conf[section].get('api_key', api_key),
+                             conf[section].get('shared_secret',
+                                               shared_secret)))
             with open(conf_path, 'w') as f:
                 conf.write(f)
         for section in conf.sections():
             if section == 'global':
                 continue
             logging.info(f'Scrobbling {section}')
-            scr = Scrobbler(
-                conf[section]['api_url'], conf[section].get('api_key')
-                or api_key, conf[section].get('shared_secret')
-                or shared_secret, conf[section]['session_key'])
+            scr = Scrobbler(conf[section]['api_url'],
+                            conf[section].get('api_key', api_key),
+                            conf[section].get('shared_secret', shared_secret),
+                            conf[section]['session_key'])
             if status.status == CmusStatus.playing:
                 scr.send_now_playing(status)
             update_scrobble_state(StatusDB(con, section), scr, status)
