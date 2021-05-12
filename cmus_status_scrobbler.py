@@ -160,10 +160,14 @@ def has_played_enough(start_ts,
     return total / duration >= perc_thresh or total >= secs_thresh
 
 
+def equal_tracks(a, b):
+    return a.file == b.file
+
+
 def get_prefix_end_exclusive_idx(status_updates):
     r_su = list(reversed(status_updates))
     for i, (cur, prv) in enumerate(zip(r_su, r_su[1:])):
-        if (cur.status == CmusStatus.stopped or cur.file != prv.file
+        if (cur.status == CmusStatus.stopped or not equal_tracks(cur, prv)
                 or cur.status == prv.status
                 or prv.status == CmusStatus.stopped):
             return len(r_su) - i
@@ -195,9 +199,9 @@ def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4 * 60):
             cur.duration,
             perc_thresh,
             secs_thresh,
-            ptbp=ptbp if ptbp_status and ptbp_status.file == cur.file else 0)
+            ptbp=ptbp if ptbp_status and equal_tracks(ptbp_status, cur) else 0)
 
-        if (cur.file != nxt.file
+        if (not equal_tracks(cur, nxt)
                 or nxt.status in [CmusStatus.stopped, CmusStatus.playing]):
             if hpe:
                 scrobbles.append(cur)
@@ -212,7 +216,7 @@ def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4 * 60):
             leftovers.append(nxt)
             continue
 
-        if cur.file == nxt2.file and nxt2.status == CmusStatus.playing:
+        if equal_tracks(cur, nxt2) and nxt2.status == CmusStatus.playing:
             # playing continued, keeping already played time for next
             ptbp += (nxt.cur_time - cur.cur_time).total_seconds()
             ptbp_status = cur if not ptbp_status else ptbp_status
