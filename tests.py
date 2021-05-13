@@ -210,6 +210,10 @@ class TestStatusDB(unittest.TestCase):
         for expected, actual in it.zip_longest(ar1, ar2):
             self.assertEqual(expected, actual)
 
+    def update_scrobble_state(self, db, new_su):
+        sc = namedtuple('SC', 'scrobble')(scrobble=lambda x: None)
+        update_scrobble_state(db, sc, new_su)
+
     def test_update(self):
         d = datetime.datetime.now()
         sus = [
@@ -227,7 +231,7 @@ class TestStatusDB(unittest.TestCase):
             db = self.build_db()
             db.save_status_updates(sus)
             self.assertArrayEqual(sus, db.get_status_updates())
-            update_scrobble_state(db, new_su)
+            self.update_scrobble_state(db, new_su)
             n_sus = db.get_status_updates()
             self.assertArrayEqual(sus + [new_su], n_sus)
 
@@ -244,7 +248,7 @@ class TestStatusDB(unittest.TestCase):
         with self.con:
             db = self.build_db()
             db.save_status_updates(sus)
-            update_scrobble_state(db, new_su)
+            self.update_scrobble_state(db, new_su)
             n_sus = db.get_status_updates()
             self.assertArrayEqual([new_su], n_sus)
 
