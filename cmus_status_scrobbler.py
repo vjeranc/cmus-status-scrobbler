@@ -87,7 +87,12 @@ def get_api_sig(params, secret=None):
     return m.hexdigest()
 
 
-def send_req(api_url, api_key, shared_secret=None, method=None, **params):
+def send_req(api_url,
+             api_key,
+             ignore_request_fail=False,
+             shared_secret=None,
+             method=None,
+             **params):
     params = dict(**params)
     params['api_key'] = api_key
     params['method'] = method
@@ -97,10 +102,16 @@ def send_req(api_url, api_key, shared_secret=None, method=None, **params):
     params['format'] = 'json'
     logging.info(params)
     api_req = ur.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
-    with ur.urlopen(api_req, up.urlencode(params).encode('utf-8')) as f:
-        res = f.read().decode('utf-8')
-        logging.info(res)
-        return json.loads(res) if res else None
+    try:
+        with ur.urlopen(api_req, up.urlencode(params).encode('utf-8')) as f:
+            res = f.read().decode('utf-8')
+            logging.info(res)
+            return json.loads(res) if res else None
+    except Exception as e:
+        if not ignore_request_fail:
+            raise e
+        logging.exception('Ignoring this error.')
+    return None
 
 
 class Scrobbler:
@@ -170,6 +181,7 @@ class Scrobbler:
                       sk=self.sk)
         send_req(self.api_url,
                  self.api_key,
+                 ignore_request_fail=True,
                  shared_secret=self.shared_secret,
                  method=ScrobblerMethod.NOW_PLAYING,
                  **params)
@@ -296,6 +308,7 @@ def authenticate(auth_url, api_url, api_key, shared_secret):
 def update_scrobble_state(db, scrobbler, new_status_update):
     sus = db.get_status_updates()
     sus.append(new_status_update)
+    db.save_status_updates([new_status_update])
     scrobbles, leftovers = calculate_scrobbles(sus)
     # scrobble the scrobbles, if fails then just append the new status update
     # to the db.
