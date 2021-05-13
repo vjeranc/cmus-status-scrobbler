@@ -312,7 +312,13 @@ def update_scrobble_state(db, scrobbler, new_status_update):
     scrobbles, leftovers = calculate_scrobbles(sus)
     # scrobble the scrobbles, if fails then just append the new status update
     # to the db.
-    scrobbler.scrobble(scrobbles)
+    try:
+        scrobbler.scrobble(scrobbles)
+    except Exception:
+        logging.exception('Scrobbling failed')
+        # scrobbling failed
+        # do not clear and do not use the leftovers
+        return
     db.clear()
     db.save_status_updates(leftovers)
 
@@ -338,14 +344,15 @@ def main():
         conf.read_file(f)
     # TODO test concurrent writes, db should be locked immediatelly
     with sqlite3.connect(conf['global'].get('db_path', args.db_path),
-                         timeout=60) as con:
-        api_key, shared_secret = None, None  # using global if local not defined
+                         timeout=60,
+                         isolation_level='IMMEDIATE') as con:
+        # using global if local not defined
+        api_key = conf['global'].get('api_key')
+        shared_secret = conf['global'].get('shared_secret')
         status = parse_cmus_status_line(sys.argv[1:])
         logging.info(repr(status))
         for section in conf.sections():
             if section == 'global':
-                api_key = conf[section].get('api_key')
-                shared_secret = conf[section].get('shared_secret')
                 continue
             if 'session_key' in conf[section]:
                 print(f'Session key already active for {section}. Skipping...')
