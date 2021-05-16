@@ -7,7 +7,8 @@ on:
 jobs:
   Run-Tests:
     runs-on: ubuntu-latest
-    steps: 
+    steps:
+      - uses: actions/checkout@v2 
       - run: echo "Starting tests..."
       - run: python tests.py
       - run: echo "Tests did not fail."
