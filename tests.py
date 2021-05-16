@@ -191,6 +191,23 @@ class TestCalculateScrobbles(unittest.TestCase):
         self.assertEqual([], leftovers)
         self.assertArrayEqual(ss[:-1], scrobbles)
 
+    def test_scrobble_criteria(self):
+        # Should stop when:
+        #   1. stopped
+        #   2. playing again
+        #   3. different file
+        d = datetime.datetime.utcnow()
+        a = dict(cur_time=d, duration=10, file='A', status=CmusStatus.playing)
+        for stop in [
+                dict(file='B'),
+                dict(status=CmusStatus.playing),
+                dict(status=CmusStatus.stopped)
+        ]:
+            ss = [SS(**a), SS(**{**a, **stop, 'cur_time': d + secs(10)})]
+            scrobbles, leftovers = calculate_scrobbles(ss)
+            self.assertEqual(1, len(scrobbles))
+            self.assertEqual(ss[0], scrobbles[0])
+
 
 DB_FILE = 'test.sqlite3'
 
