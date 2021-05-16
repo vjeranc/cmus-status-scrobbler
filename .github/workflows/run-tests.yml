@@ -1,4 +1,4 @@
-name: cmus-status-scrobbler tests
+name: tests
 on:
   push:
     branches: [ main ]
