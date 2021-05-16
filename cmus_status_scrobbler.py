@@ -38,7 +38,7 @@ parser.add_argument(
     help='If given logging will be saved to desired path (default: no loggin)')
 parser.add_argument('--log-db',
                     action='store_true',
-                    help='If given SQL queries are logged')
+                    help='If given, SQL queries are logged')
 
 
 class StatusDB:
@@ -118,12 +118,14 @@ def send_req(api_url,
 
 
 class Scrobbler:
-    def __init__(self, name, api_url, api_key, shared_secret, session_key):
+    def __init__(self, name, api_url, api_key, shared_secret, session_key,
+                 now_playing):
         self.name = name
         self.api_url = api_url
         self.api_key = api_key
         self.shared_secret = shared_secret
         self.sk = session_key
+        self.now_playing = now_playing
 
     @staticmethod
     def auth(auth_url, api_url, api_key, shared_secret):
@@ -184,7 +186,7 @@ class Scrobbler:
                  **batch_scrobble_request)
 
     def send_now_playing(self, cur):
-        if cur.status != CmusStatus.playing:
+        if not self.now_playing or cur.status != CmusStatus.playing:
             return
         params = dict(artist=cur.artist,
                       track=cur.title,
@@ -353,10 +355,13 @@ def get_scrobblers(conf):
         if section == 'global':
             continue
         scrs.append(
-            Scrobbler(section, conf[section]['api_url'],
-                      conf[section].get('api_key', api_key),
-                      conf[section].get('shared_secret', shared_secret),
-                      conf[section]['session_key']))
+            Scrobbler(
+                section, conf[section]['api_url'],
+                conf[section].get('api_key', api_key),
+                conf[section].get('shared_secret',
+                                  shared_secret), conf[section]['session_key'],
+                conf[section].get('now_playing',
+                                  conf['global'].get('now_playing'))))
     return scrs
 
 
