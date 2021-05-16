@@ -8,6 +8,8 @@ You can just call it directly in your `status_display_program.sh`:
 cmus_status_scrobbler.py "$@" &
 ```
 
+Before normal use you should run the program manually with `--auth` to authenticate with services defined in configuration file. Check `cmus_status_scrobbler.py --help` for more options.
+
 **Features:**
 
 * offline mode,
