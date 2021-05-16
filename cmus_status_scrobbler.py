@@ -1,24 +1,24 @@
 #!/usr/bin/env python
 
+from collections import namedtuple
+from functools import reduce
+from operator import attrgetter
 import argparse
 import configparser
-from collections import namedtuple
 import datetime
 import hashlib
+import itertools as it
 import json
 import logging
 import os
+import pickle
+import sqlite3
 import urllib.parse as up
 import urllib.request as ur
-import itertools as it
-from operator import attrgetter
-import sqlite3
-import pickle
-from functools import reduce
 
 CONFIG_PATH = '~/.config/cmus/cmus_status_scrobbler.ini'
-DB_PATH = '~/.config/cmus/cmus_status_scrobbler.sqlite3'
 DB_CONNECT_TIMEOUT = 300
+DB_PATH = '~/.config/cmus/cmus_status_scrobbler.sqlite3'
 SCROBBLE_BATCH_SIZE = 50
 
 parser = argparse.ArgumentParser(description="Scrobbling.")
@@ -37,9 +37,11 @@ parser.add_argument(
     '--log-path',
     type=str,
     required=False,
-    help='If given logging will be saved to desired path (default: no loggin)')
+    help='If given logging will be saved to desired path (default: no logging)'
+)
 parser.add_argument('--log-db',
                     action='store_true',
+                    default=False,
                     help='If given, SQL queries are logged')
 
 
@@ -318,7 +320,10 @@ def update_scrobble_state(db, scrobbler, new_status_update):
             scrobbler.scrobble(scrobbles[i:i + SCROBBLE_BATCH_SIZE])
         except Exception:
             logging.exception('Scrobbling failed')
-            failed_scrobbles.extend(scrobbles[i:i + SCROBBLE_BATCH_SIZE])
+            # tracks need to be scrobbled in correct order. If the first
+            # batch fails then other batches need to be left for later too.
+            failed_scrobbles.extend(scrobbles[i:])
+            break
     db.clear()
     db.save_status_updates(failed_scrobbles + leftovers)
 
@@ -343,6 +348,10 @@ def db_connect(db_path, log_db=False):
     if log_db:
         con.set_trace_callback(logging.debug)
     con.execute('BEGIN IMMEDIATE')  # synchronizing processes
+    # when multiple status updates arrive one after another, then
+    # if there is no blocking mechanism the order of status updates
+    # will not be correct
+    # Try it out without BEGIN immediate and hold pause-play
     return con
 
 
@@ -357,10 +366,9 @@ def get_scrobblers(conf):
             Scrobbler(
                 section, conf[section]['api_url'],
                 conf[section].get('api_key', api_key),
-                conf[section].get('shared_secret',
-                                  shared_secret), conf[section]['session_key'],
-                conf[section].get('now_playing',
-                                  conf['global'].get('now_playing'))))
+                conf[section].get('shared_secret', shared_secret),
+                conf[section]['session_key'], conf[section].getboolean(
+                    'now_playing', conf['global'].getboolean('now_playing'))))
     return scrs
 
 
@@ -394,8 +402,8 @@ def main():
             auth(conf).write(f)
         exit()
 
-    with db_connect(args.db_path or conf['global'].get('db_path'),
-                    log_db=args.log_db or conf['global'].get('log_db')) as con:
+    with db_connect(conf['global'].get('db_path', args.db_path),
+                    log_db=conf['global'].get('log_db', args.log_db)) as con:
         status = parse_cmus_status_line(rest)
         logging.info(repr(status))
         for scr in get_scrobblers(conf):
