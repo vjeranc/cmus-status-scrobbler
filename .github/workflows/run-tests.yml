@@ -1,0 +1,14 @@
+name: cmus-status-scrobbler tests
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  Run-Tests:
+    runs-on: ubuntu-latest
+    steps: 
+      - run: echo "Starting tests..."
+      - run: python tests.py
+      - run: echo "Tests did not fail."
+      
