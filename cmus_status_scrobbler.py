@@ -18,6 +18,8 @@ from functools import reduce
 
 CONFIG_PATH = '~/.config/cmus/cmus_status_scrobbler.ini'
 DB_PATH = '~/.config/cmus/cmus_status_scrobbler.sqlite3'
+DB_CONNECT_TIMEOUT = 300
+SCROBBLE_BATCH_SIZE = 50
 
 parser = argparse.ArgumentParser(description="Scrobbling.")
 parser.add_argument('--auth',
@@ -169,7 +171,6 @@ class Scrobbler:
         if not status_updates:
             return
         # ignoring status updates with status other than playing
-        # TODO do batches of 50
         playing_sus = filter(lambda x: x.status == CmusStatus.playing,
                              status_updates)
         batch_scrobble_request = reduce(lambda a, b: {
@@ -311,17 +312,15 @@ def update_scrobble_state(db, scrobbler, new_status_update):
     sus.append(new_status_update)
     db.save_status_updates([new_status_update])
     scrobbles, leftovers = calculate_scrobbles(sus)
-    # scrobble the scrobbles, if fails then just append the new status update
-    # to the db.
-    try:
-        scrobbler.scrobble(scrobbles)
-    except Exception:
-        logging.exception('Scrobbling failed')
-        # scrobbling failed
-        # do not clear and do not use the leftovers
-        return
+    failed_scrobbles = []
+    for i in range(0, len(scrobbles), SCROBBLE_BATCH_SIZE):
+        try:
+            scrobbler.scrobble(scrobbles[i:i + SCROBBLE_BATCH_SIZE])
+        except Exception:
+            logging.exception('Scrobbling failed')
+            failed_scrobbles.extend(scrobbles[i:i + SCROBBLE_BATCH_SIZE])
     db.clear()
-    db.save_status_updates(leftovers)
+    db.save_status_updates(failed_scrobbles + leftovers)
 
 
 def setup_logging(log_path):
@@ -340,7 +339,7 @@ def get_conf(conf_path):
 
 
 def db_connect(db_path, log_db=False):
-    con = sqlite3.connect(db_path, timeout=60)
+    con = sqlite3.connect(db_path, timeout=DB_CONNECT_TIMEOUT)
     if log_db:
         con.set_trace_callback(logging.debug)
     con.execute('BEGIN IMMEDIATE')  # synchronizing processes
@@ -396,7 +395,7 @@ def main():
         exit()
 
     with db_connect(args.db_path or conf['global'].get('db_path'),
-                    log_db=args.log_db) as con:
+                    log_db=args.log_db or conf['global'].get('log_db')) as con:
         status = parse_cmus_status_line(rest)
         logging.info(repr(status))
         for scr in get_scrobblers(conf):
