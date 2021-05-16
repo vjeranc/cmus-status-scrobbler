@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import argparse
 import configparser
 from collections import namedtuple
@@ -6,7 +8,6 @@ import hashlib
 import json
 import logging
 import os
-import sys
 import urllib.parse as up
 import urllib.request as ur
 import itertools as it
@@ -19,11 +20,25 @@ CONFIG_PATH = '~/.config/cmus/cmus_status_scrobbler.ini'
 DB_PATH = '~/.config/cmus/cmus_status_scrobbler.sqlite3'
 
 parser = argparse.ArgumentParser(description="Scrobbling.")
-parser.add_argument('--ini', type=str, default=os.path.expanduser(CONFIG_PATH))
-parser.add_argument('--db-path', type=str, default=os.path.expanduser(DB_PATH))
-parser.add_argument('--now-playing', type=bool, default=True, required=False)
-parser.add_argument('--api-url', type=str, required=False)
-parser.add_argument('--auth-url', type=str, required=False)
+parser.add_argument('--auth',
+                    action='store_true',
+                    help="Add if you're missing session_key in .ini file.")
+parser.add_argument('--ini',
+                    type=str,
+                    default=os.path.expanduser(CONFIG_PATH),
+                    help='Path to .ini configuration file.')
+parser.add_argument('--db-path',
+                    type=str,
+                    default=os.path.expanduser(DB_PATH),
+                    help='Path to sqlite3 database')
+parser.add_argument(
+    '--log-path',
+    type=str,
+    required=False,
+    help='If given logging will be saved to desired path (default: no loggin)')
+parser.add_argument('--log-db',
+                    action='store_true',
+                    help='If given SQL queries are logged')
 
 
 class StatusDB:
@@ -57,18 +72,6 @@ class CmusStatus:
     stopped = "stopped"
     playing = "playing"
     paused = "paused"
-
-
-class Log:
-    @staticmethod
-    def missing_playing_status(track):
-        msg = 'Track {:}: missing playing status - not scrobbled'
-        logging.info(msg.format(track.file))
-
-    @staticmethod
-    def not_played_enough(track):
-        msg = 'Track {:}: has not played enough - not scrobbled'
-        logging.info(msg.format(track.file))
 
 
 Status = namedtuple('Status', [
@@ -115,14 +118,27 @@ def send_req(api_url,
 
 
 class Scrobbler:
-    def __init__(self, api_url, api_key, shared_secret, session_key):
+    def __init__(self, name, api_url, api_key, shared_secret, session_key):
+        self.name = name
         self.api_url = api_url
         self.api_key = api_key
         self.shared_secret = shared_secret
         self.sk = session_key
 
-    def auth():
-        pass
+    @staticmethod
+    def auth(auth_url, api_url, api_key, shared_secret):
+        # fetching token that is used to ask for access
+        token = send_req(api_url, api_key,
+                         method=ScrobblerMethod.GET_TOKEN)['token']
+        print(f'{auth_url}?api_key={api_key}&token={token}')
+        input('Press <Enter> after visiting the link and allowing access...')
+        # fetching session with infinite lifetime that is used to scrobble
+        session = send_req(api_url,
+                           api_key,
+                           shared_secret=shared_secret,
+                           method=ScrobblerMethod.GET_SESSION,
+                           token=token)['session']
+        return dict(session_key=session['key'], username=session['name'])
 
     def make_scrobble(self, i, su):
         return {
@@ -288,23 +304,6 @@ class ScrobblerMethod:
     SCROBBLE = 'track.scrobble'
 
 
-def authenticate(auth_url, api_url, api_key, shared_secret):
-    # TODO move to scrobbler
-    # fetching token that is used to ask for access
-    # headers= makes it work on libre.fm
-    token = send_req(api_url, api_key,
-                     method=ScrobblerMethod.GET_TOKEN)['token']
-    print(f'{auth_url}?api_key={api_key}&token={token}')
-    input('Press <Enter> after visiting the link and allowing access...')
-    # fetching session with infinite lifetime that is used to scrobble
-    session = send_req(api_url,
-                       api_key,
-                       shared_secret=shared_secret,
-                       method=ScrobblerMethod.GET_SESSION,
-                       token=token)['session']
-    return dict(session_key=session['key'], username=session['name'])
-
-
 def update_scrobble_state(db, scrobbler, new_status_update):
     sus = db.get_status_updates()
     sus.append(new_status_update)
@@ -323,59 +322,82 @@ def update_scrobble_state(db, scrobbler, new_status_update):
     db.save_status_updates(leftovers)
 
 
-def main():
-    logging.basicConfig(
-        filename='/home/vjeran/.config/cmus/cmus_scrobbler.log',
-        encoding='utf-8',
-        level=logging.DEBUG,
-    )
-    logging.info('Starting...')
-    logging.info('Parsing arguments')
-    logging.info(sys.argv[1:])
-    args, _ = parser.parse_known_args()
-    logging.info('Arguments parsed')
-    logging.info(args)
-    conf_path = args.ini
+def setup_logging(log_path):
+    logging.basicConfig(filename=log_path or '/tmp/cmus_scrobbler.log',
+                        encoding='utf-8',
+                        level=logging.DEBUG)
+
+
+def get_conf(conf_path):
     if not os.path.exists(conf_path):
         raise FileNotFoundError(f'{conf_path} does not exist.')
-
     conf = configparser.ConfigParser()
     with open(conf_path, 'r') as f:
         conf.read_file(f)
-    # TODO test concurrent writes, db should be locked immediatelly
-    with sqlite3.connect(conf['global'].get('db_path', args.db_path),
-                         timeout=60,
-                         isolation_level='IMMEDIATE') as con:
-        # using global if local not defined
-        api_key = conf['global'].get('api_key')
-        shared_secret = conf['global'].get('shared_secret')
-        status = parse_cmus_status_line(sys.argv[1:])
-        logging.info(repr(status))
-        for section in conf.sections():
-            if section == 'global':
-                continue
-            if 'session_key' in conf[section]:
-                print(f'Session key already active for {section}. Skipping...')
-                continue
+    return conf
+
+
+def db_connect(db_path, log_db=False):
+    con = sqlite3.connect(db_path, timeout=60)
+    if log_db:
+        con.set_trace_callback(logging.debug)
+    con.execute('BEGIN IMMEDIATE')  # synchronizing processes
+    return con
+
+
+def get_scrobblers(conf):
+    api_key = conf['global'].get('api_key')
+    shared_secret = conf['global'].get('shared_secret')
+    scrs = []
+    for section in conf.sections():
+        if section == 'global':
+            continue
+        scrs.append(
+            Scrobbler(section, conf[section]['api_url'],
+                      conf[section].get('api_key', api_key),
+                      conf[section].get('shared_secret', shared_secret),
+                      conf[section]['session_key']))
+    return scrs
+
+
+def auth(conf):
+    api_key = conf['global'].get('api_key')
+    shared_secret = conf['global'].get('shared_secret')
+    for section in conf.sections():
+        if section == 'global':
+            continue
+        if 'session_key' in conf[section]:
+            print(f'Session key already active for {section}. Skipping...')
+            continue
+        try:
             conf[section].update(
-                authenticate(conf[section]['auth_url'],
-                             conf[section]['api_url'],
-                             conf[section].get('api_key', api_key),
-                             conf[section].get('shared_secret',
-                                               shared_secret)))
-            with open(conf_path, 'w') as f:
-                conf.write(f)
-        for section in conf.sections():
-            if section == 'global':
-                continue
-            logging.info(f'Scrobbling {section}')
-            scr = Scrobbler(conf[section]['api_url'],
-                            conf[section].get('api_key', api_key),
-                            conf[section].get('shared_secret', shared_secret),
-                            conf[section]['session_key'])
-            if status.status == CmusStatus.playing:
-                scr.send_now_playing(status)
-            update_scrobble_state(StatusDB(con, section), scr, status)
+                Scrobbler.auth(
+                    conf[section]['auth_url'], conf[section]['api_url'],
+                    conf[section].get('api_key', api_key),
+                    conf[section].get('shared_secret', shared_secret)))
+        except Exception:
+            logging.exception('Authentication failed.')
+    return conf
+
+
+def main():
+    args, rest = parser.parse_known_args()
+    conf_path = args.ini
+    conf = get_conf(conf_path)
+    setup_logging(args.log_path or conf['global'].get('log_path'))
+    if args.auth == 'auth':
+        with open(conf_path, 'w') as f:
+            auth(conf).write(f)
+        exit()
+
+    with db_connect(args.db_path or conf['global'].get('db_path'),
+                    log_db=args.log_db) as con:
+        status = parse_cmus_status_line(rest)
+        logging.info(repr(status))
+        for scr in get_scrobblers(conf):
+            logging.info(f'Scrobbling {scr.name}')
+            scr.send_now_playing(status)
+            update_scrobble_state(StatusDB(con, scr.name), scr, status)
 
 
 if __name__ == "__main__":
