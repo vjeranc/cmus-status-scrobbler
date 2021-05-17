@@ -300,7 +300,7 @@ def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4 * 60):
         # in this case we just check if played enough otherwise no scrobble
         if hpe:
             scrobbles.append(ptbp_status or cur)
-    return scrobbles, leftovers + status_updates[prefix_end:]
+    return scrobbles, leftovers + sus[prefix_end:]
 
 
 class ScrobblerMethod:
