@@ -255,8 +255,9 @@ def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4 * 60):
 
     # if status updates array has a suffix of playing/paused updates with same
     # track, then these tracks need to be immediatelly leftovers
-    prefix_end = get_prefix_end_exclusive_idx(status_updates)
-    sus = sorted(status_updates[:prefix_end], key=attrgetter('cur_time'))
+    sus = sorted(status_updates, key=attrgetter('cur_time'))
+    prefix_end = get_prefix_end_exclusive_idx(sus)
+    sus = sus[:prefix_end]
     # I am incapable of having simple thoughts. The pause is messing me up.
     # I use these two variables to scrobble paused tracks.
     ptbp = 0  # played time before pausing
