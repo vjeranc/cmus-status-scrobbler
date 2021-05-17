@@ -121,7 +121,7 @@ class TestCalculateScrobbles(unittest.TestCase):
                duration=10,
                file='A',
                status=CmusStatus.paused),
-            SS(cur_time=d + secs(401),
+            SS(cur_time=d + secs(402),
                duration=10,
                file='A',
                status=CmusStatus.stopped)

@@ -257,12 +257,13 @@ def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4 * 60):
     # track, then these tracks need to be immediatelly leftovers
     sus = sorted(status_updates, key=attrgetter('cur_time'))
     prefix_end = get_prefix_end_exclusive_idx(sus)
-    sus = sus[:prefix_end]
+    lsus = sus[:prefix_end]
+    rsus = sus[prefix_end:]
     # I am incapable of having simple thoughts. The pause is messing me up.
     # I use these two variables to scrobble paused tracks.
     ptbp = 0  # played time before pausing
     ptbp_status = None
-    for cur, nxt, nxt2 in it.zip_longest(sus, sus[1:], sus[2:]):
+    for cur, nxt, nxt2 in it.zip_longest(lsus, lsus[1:], lsus[2:]):
         if cur.status in [CmusStatus.stopped, CmusStatus.paused]:
             continue
         if nxt is None:
@@ -300,7 +301,7 @@ def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4 * 60):
         # in this case we just check if played enough otherwise no scrobble
         if hpe:
             scrobbles.append(ptbp_status or cur)
-    return scrobbles, leftovers + sus[prefix_end:]
+    return scrobbles, leftovers + rsus[prefix_end:]
 
 
 class ScrobblerMethod:
