@@ -30,10 +30,10 @@ defaults.
 
 ## Handling pause
 
-Pausing a track will not make it scrobble. Continuing the paused track will
-result in a scrobble if new playing time and playing time before pause satisfy
-the scrobble requirement (playing time >= 50% of track duration or at least 4
-minutes).
+Pausing a track will not make it scrobble. Continuing the paused track and 
+finishing or stopping it will result in a scrobble if new playing time and 
+playing time before pause satisfy the scrobble requirement (playing time >=
+50% of track duration or at least 4 minutes).
 
 ## Implementation details
 
