@@ -18,7 +18,7 @@ Before normal use you should run the program manually with `--auth` to authentic
 * now playing request,
 * uses [MusicBrainz](https://musicbrainz.org) id if present,
 * handles pause status well and
-* is a standalone program (not continuously running server).
+* is a standalone program (not a continuously running server).
 
 ## Configuration
 
@@ -30,10 +30,10 @@ defaults.
 
 ## Handling pause
 
-Pausing a track will not make it scrobble. Continuing the paused track will
-result in a scrobble if new playing time and playing time before pause satisfy
-the scrobble requirement (playing time >= 50% of track duration or at least 4
-minutes).
+Pausing a track will not make it scrobble. Continuing the paused track and 
+finishing or stopping it will result in a scrobble if new playing time and 
+playing time before pause satisfy the scrobble requirement (playing time >=
+50% of track duration or at least 4 minutes).
 
 ## Implementation details
 
