@@ -399,7 +399,7 @@ def main():
     conf_path = args.ini
     conf = get_conf(conf_path)
     setup_logging(args.log_path or conf['global'].get('log_path'))
-    if args.auth == 'auth':
+    if args.auth:
         with open(conf_path, 'w') as f:
             auth(conf).write(f)
         exit()
