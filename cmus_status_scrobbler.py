@@ -369,7 +369,7 @@ def get_scrobblers(conf):
                 section, conf[section]['api_url'],
                 conf[section].get('api_key', api_key),
                 conf[section].get('shared_secret', shared_secret),
-                conf[section]['session_key'], conf[section].getboolean(
+                conf[section].get('session_key'), conf[section].getboolean(
                     'now_playing', conf['global'].getboolean('now_playing'))))
     return scrs
 
