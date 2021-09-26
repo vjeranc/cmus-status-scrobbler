@@ -40,3 +40,8 @@ playing time before pause satisfy the scrobble requirement (playing time >=
 Uses [sqlite3](https://docs.python.org/3/library/sqlite3.html) to support
 offline mode and to synchronize the processes in case of multiple status
 updates (like holding the pause/play button too long).
+
+## My own usage
+
+I use this Python script to scrobble to librefm, lastfm, listenbrainz and
+my own family scrobbling service.
