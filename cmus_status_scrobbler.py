@@ -99,6 +99,7 @@ def send_req(api_url,
              ignore_request_fail=False,
              shared_secret=None,
              method=None,
+             xml=False,
              **params):
     params = dict(**params)
     params['api_key'] = api_key
@@ -106,14 +107,19 @@ def send_req(api_url,
     params = {k: v for k, v in params.items() if v is not None}
     if shared_secret:
         params['api_sig'] = get_api_sig(params, secret=shared_secret)
-    params['format'] = 'json'
+    if not xml:
+        params['format'] = 'json'
     logging.info(params)
     api_req = ur.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
     try:
         with ur.urlopen(api_req, up.urlencode(params).encode('utf-8')) as f:
             res = f.read().decode('utf-8')
             logging.info(res)
-            return json.loads(res) if res else None
+            if not res:
+                return None
+            if not xml:
+                return json.loads(res)
+            return res
     except Exception as e:
         if not ignore_request_fail:
             raise e
@@ -132,18 +138,28 @@ class Scrobbler:
         self.now_playing = now_playing
 
     @staticmethod
-    def auth(auth_url, api_url, api_key, shared_secret):
+    def auth(auth_url, api_url, api_key, shared_secret, token=None, xml=False):
         # fetching token that is used to ask for access
         token = send_req(api_url, api_key,
-                         method=ScrobblerMethod.GET_TOKEN)['token']
-        print(f'{auth_url}?api_key={api_key}&token={token}')
+                         method=ScrobblerMethod.GET_TOKEN, xml=xml)
+        if xml:
+            token = token.split("<token>")[1].split("</token>")[0]
+        else:
+            token = token['token']
+        print(f'{auth_url}?' + up.urlencode(dict(token=token,api_key=api_key)))
         input('Press <Enter> after visiting the link and allowing access...')
         # fetching session with infinite lifetime that is used to scrobble
         session = send_req(api_url,
                            api_key,
                            shared_secret=shared_secret,
                            method=ScrobblerMethod.GET_SESSION,
-                           token=token)['session']
+                           token=token, xml=xml)
+        if xml:
+            session = dict(
+                key=session.split("<key>")[1].split("</key>")[0],
+                name=session.split("<name>")[1].split("</name>")[0])
+        else:
+            session = session['session']
         return dict(session_key=session['key'], username=session['name'])
 
     def make_scrobble(self, i, su):
@@ -388,8 +404,12 @@ def auth(conf):
                 Scrobbler.auth(
                     conf[section]['auth_url'], conf[section]['api_url'],
                     conf[section].get('api_key', api_key),
-                    conf[section].get('shared_secret', shared_secret)))
-        except Exception:
+                    conf[section].get('shared_secret', shared_secret),
+                    conf[section].get('user_token'),
+                    conf[section].get('xml_gettoken'),
+                )
+            )
+        except Exception as e:
             logging.exception('Authentication failed.')
     return conf
 
