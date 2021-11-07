@@ -139,11 +139,11 @@ class Scrobbler:
         self.xml = xml
 
     @staticmethod
-    def auth(auth_url, api_url, api_key, shared_secret):
+    def auth(auth_url, api_url, api_key, shared_secret, xml=False):
         # fetching token that is used to ask for access
         token = send_req(api_url, api_key,
-                         method=ScrobblerMethod.GET_TOKEN, xml=self.xml)
-        if self.xml:
+                         method=ScrobblerMethod.GET_TOKEN, xml=xml)
+        if xml:
             token = token.split("<token>")[1].split("</token>")[0]
         else:
             token = token['token']
@@ -154,8 +154,8 @@ class Scrobbler:
                            api_key,
                            shared_secret=shared_secret,
                            method=ScrobblerMethod.GET_SESSION,
-                           token=token, xml=self.xml)
-        if self.xml:
+                           token=token, xml=xml)
+        if xml:
             session = dict(
                 key=session.split("<key>")[1].split("</key>")[0],
                 name=session.split("<name>")[1].split("</name>")[0])
@@ -400,6 +400,7 @@ def get_scrobblers(conf):
 def auth(conf):
     api_key = conf['global'].get('api_key')
     shared_secret = conf['global'].get('shared_secret')
+    format_xml = conf['global'].getboolean('format_xml')
     for section in conf.sections():
         if section == 'global':
             continue
@@ -412,6 +413,7 @@ def auth(conf):
                     conf[section]['auth_url'], conf[section]['api_url'],
                     conf[section].get('api_key', api_key),
                     conf[section].get('shared_secret', shared_secret),
+                    conf[section].getboolean('format_xml', format_xml),
                 )
             )
         except Exception:
