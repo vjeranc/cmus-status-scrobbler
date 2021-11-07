@@ -138,7 +138,7 @@ class Scrobbler:
         self.now_playing = now_playing
 
     @staticmethod
-    def auth(auth_url, api_url, api_key, shared_secret, token=None, xml=False):
+    def auth(auth_url, api_url, api_key, shared_secret, xml=False):
         # fetching token that is used to ask for access
         token = send_req(api_url, api_key,
                          method=ScrobblerMethod.GET_TOKEN, xml=xml)
@@ -405,7 +405,6 @@ def auth(conf):
                     conf[section]['auth_url'], conf[section]['api_url'],
                     conf[section].get('api_key', api_key),
                     conf[section].get('shared_secret', shared_secret),
-                    conf[section].get('user_token'),
                     conf[section].get('xml_auth'),
                 )
             )
