@@ -123,7 +123,7 @@ def send_req(api_url,
     except Exception as e:
         if not ignore_request_fail:
             raise e
-        logging.exception('Ignoring this error.')
+        logging.exception('Ignoring this error.', e)
     return None
 
 
@@ -336,8 +336,8 @@ def update_scrobble_state(db, scrobbler, new_status_update):
     for i in range(0, len(scrobbles), SCROBBLE_BATCH_SIZE):
         try:
             scrobbler.scrobble(scrobbles[i:i + SCROBBLE_BATCH_SIZE])
-        except Exception:
-            logging.exception('Scrobbling failed')
+        except Exception as e:
+            logging.exception('Scrobbling failed', e)
             # tracks need to be scrobbled in correct order. If the first
             # batch fails then other batches need to be left for later too.
             failed_scrobbles.extend(scrobbles[i:])
@@ -429,13 +429,14 @@ def main():
         status = parse_cmus_status_line(rest)
         logging.info(repr(status))
         for scr in get_scrobblers(conf):
-            logging.info(f'Scrobbling {scr.name}')
+            logging.info(f'Sending now playing for {scr.name}')
             scr.send_now_playing(status)
+            logging.info(f'Scrobbling previous tracks for {scr.name}')
             update_scrobble_state(StatusDB(con, scr.name), scr, status)
 
 
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
-        logging.exception('Error happened')
+    except Exception as e:
+        logging.exception('Error happened', e)
