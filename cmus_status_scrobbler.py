@@ -112,7 +112,7 @@ def send_req(api_url,
     logging.info(params)
     api_req = ur.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
     try:
-        with ur.urlopen(api_req, up.urlencode(params).encode('utf-8')) as f:
+        with ur.urlopen(api_req, up.urlencode(params, encoding='utf-8').encode()) as f:
             res = f.read().decode('utf-8')
             logging.info(res)
             if not res:
@@ -123,26 +123,27 @@ def send_req(api_url,
     except Exception as e:
         if not ignore_request_fail:
             raise e
-        logging.exception('Ignoring this error.', e)
+        logging.exception('Ignoring error.')
     return None
 
 
 class Scrobbler:
     def __init__(self, name, api_url, api_key, shared_secret, session_key,
-                 now_playing):
+                 now_playing, xml=False):
         self.name = name
         self.api_url = api_url
         self.api_key = api_key
         self.shared_secret = shared_secret
         self.sk = session_key
         self.now_playing = now_playing
+        self.xml = xml
 
     @staticmethod
-    def auth(auth_url, api_url, api_key, shared_secret, xml=False):
+    def auth(auth_url, api_url, api_key, shared_secret):
         # fetching token that is used to ask for access
         token = send_req(api_url, api_key,
-                         method=ScrobblerMethod.GET_TOKEN, xml=xml)
-        if xml:
+                         method=ScrobblerMethod.GET_TOKEN, xml=self.xml)
+        if self.xml:
             token = token.split("<token>")[1].split("</token>")[0]
         else:
             token = token['token']
@@ -153,8 +154,8 @@ class Scrobbler:
                            api_key,
                            shared_secret=shared_secret,
                            method=ScrobblerMethod.GET_SESSION,
-                           token=token, xml=xml)
-        if xml:
+                           token=token, xml=self.xml)
+        if self.xml:
             session = dict(
                 key=session.split("<key>")[1].split("</key>")[0],
                 name=session.split("<name>")[1].split("</name>")[0])
@@ -188,6 +189,7 @@ class Scrobbler:
     def scrobble(self, status_updates):
         if not status_updates:
             return
+        logging.info(f'Scrobbling previous tracks for {self.name}')
         # ignoring status updates with status other than playing
         playing_sus = filter(lambda x: x.status == CmusStatus.playing,
                              status_updates)
@@ -202,11 +204,14 @@ class Scrobbler:
                  self.api_key,
                  shared_secret=self.shared_secret,
                  method=ScrobblerMethod.SCROBBLE,
+                 xml=self.xml,
                  **batch_scrobble_request)
 
     def send_now_playing(self, cur):
         if not self.now_playing or cur.status != CmusStatus.playing:
             return
+
+        logging.info(f'Sending now playing for {self.name}')
         params = dict(artist=cur.artist,
                       track=cur.title,
                       album=cur.album,
@@ -221,6 +226,7 @@ class Scrobbler:
                  ignore_request_fail=True,
                  shared_secret=self.shared_secret,
                  method=ScrobblerMethod.NOW_PLAYING,
+                 xml=self.xml,
                  **params)
 
 
@@ -336,8 +342,8 @@ def update_scrobble_state(db, scrobbler, new_status_update):
     for i in range(0, len(scrobbles), SCROBBLE_BATCH_SIZE):
         try:
             scrobbler.scrobble(scrobbles[i:i + SCROBBLE_BATCH_SIZE])
-        except Exception as e:
-            logging.exception('Scrobbling failed', e)
+        except Exception:
+            logging.exception('Scrobbling failed')
             # tracks need to be scrobbled in correct order. If the first
             # batch fails then other batches need to be left for later too.
             failed_scrobbles.extend(scrobbles[i:])
@@ -386,7 +392,8 @@ def get_scrobblers(conf):
                 conf[section].get('api_key', api_key),
                 conf[section].get('shared_secret', shared_secret),
                 conf[section].get('session_key'), conf[section].getboolean(
-                    'now_playing', conf['global'].getboolean('now_playing'))))
+                    'now_playing', conf['global'].getboolean('now_playing')),
+                conf[section].getboolean('format_xml', conf['global'].getboolean('format_xml'))))
     return scrs
 
 
@@ -405,10 +412,9 @@ def auth(conf):
                     conf[section]['auth_url'], conf[section]['api_url'],
                     conf[section].get('api_key', api_key),
                     conf[section].get('shared_secret', shared_secret),
-                    conf[section].get('xml_auth'),
                 )
             )
-        except Exception as e:
+        except Exception:
             logging.exception('Authentication failed.')
     return conf
 
@@ -428,14 +434,12 @@ def main():
         status = parse_cmus_status_line(rest)
         logging.info(repr(status))
         for scr in get_scrobblers(conf):
-            logging.info(f'Sending now playing for {scr.name}')
             scr.send_now_playing(status)
-            logging.info(f'Scrobbling previous tracks for {scr.name}')
             update_scrobble_state(StatusDB(con, scr.name), scr, status)
 
 
 if __name__ == "__main__":
     try:
         main()
-    except Exception as e:
-        logging.exception('Error happened', e)
+    except Exception:
+        logging.exception('Error happened')
