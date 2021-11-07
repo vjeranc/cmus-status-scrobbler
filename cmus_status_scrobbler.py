@@ -406,7 +406,7 @@ def auth(conf):
                     conf[section].get('api_key', api_key),
                     conf[section].get('shared_secret', shared_secret),
                     conf[section].get('user_token'),
-                    conf[section].get('xml_gettoken'),
+                    conf[section].get('xml_auth'),
                 )
             )
         except Exception as e:
