@@ -28,6 +28,8 @@ It is assumed that this configuration file is stored in `~/.config/cmus/`
 directory. You can configure `db_path` and other options if you do not like the
 defaults.
 
+Delete the block for the service that you aren't using.
+
 ## Handling pause
 
 Pausing a track will not make it scrobble. Continuing the paused track and 
