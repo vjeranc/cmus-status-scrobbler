@@ -354,7 +354,6 @@ def update_scrobble_state(db, scrobbler, new_status_update):
 
 def setup_logging(log_path):
     logging.basicConfig(filename=log_path or '/tmp/cmus_scrobbler.log',
-                        encoding='utf-8',
                         level=logging.DEBUG)
 
 
