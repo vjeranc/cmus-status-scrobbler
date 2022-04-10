@@ -15,6 +15,7 @@ SS = namedtuple('SS', 'cur_time duration file status')
 
 
 class TestCalculateScrobbles(unittest.TestCase):
+
     def assertArrayEqual(self, ar1, ar2):
         for expected, actual in it.zip_longest(ar1, ar2):
             self.assertEqual(expected, actual)
@@ -191,6 +192,66 @@ class TestCalculateScrobbles(unittest.TestCase):
         self.assertEqual([], leftovers)
         self.assertArrayEqual(ss[:-1], scrobbles)
 
+    def test_pause_play_suffix_leftovers(self):
+        d = datetime.datetime.utcnow()
+        ss = [
+            SS(cur_time=d, duration=1, file='A', status=CmusStatus.playing),
+            SS(cur_time=d + secs(2),
+               duration=1,
+               file='B',
+               status=CmusStatus.playing),
+            SS(cur_time=d + secs(3),
+               duration=1,
+               file='C',
+               status=CmusStatus.playing),
+            SS(cur_time=d + secs(5),
+               duration=1,
+               file='D',
+               status=CmusStatus.playing),
+            SS(cur_time=d + secs(7),
+               duration=1,
+               file='E',
+               status=CmusStatus.playing),
+            SS(cur_time=d + secs(9),
+               duration=1,
+               file='F',
+               status=CmusStatus.playing),
+            SS(cur_time=d + secs(11),
+               duration=1,
+               file='F',
+               status=CmusStatus.stopped),
+            SS(cur_time=d + secs(13),
+               duration=10,
+               file='*',
+               status=CmusStatus.playing),
+            SS(cur_time=d + secs(15),
+               duration=10,
+               file='*',
+               status=CmusStatus.paused),
+            SS(cur_time=d + secs(17),
+               duration=10,
+               file='*',
+               status=CmusStatus.playing),
+            SS(cur_time=d + secs(21),
+               duration=10,
+               file='*',
+               status=CmusStatus.paused),
+            SS(cur_time=d + secs(23),
+               duration=10,
+               file='*',
+               status=CmusStatus.playing),
+            SS(cur_time=d + secs(25),
+               duration=10,
+               file='*',
+               status=CmusStatus.paused),
+        ]
+        scrobbles, leftovers = calculate_scrobbles(ss)
+        self.assertEqual(6, len(leftovers))
+        self.assertEqual(6, len(scrobbles))
+        self.assertArrayEqual(ss[:6], scrobbles)
+        # stopped will not be in leftovers
+        self.assertArrayEqual(ss[7:], leftovers)
+
     def test_scrobble_criteria(self):
         # Should stop when:
         #   1. stopped
@@ -213,11 +274,12 @@ DB_FILE = 'test.sqlite3'
 
 
 class TestStatusDB(unittest.TestCase):
+
     def setUp(self):
         self.con = sqlite3.connect(DB_FILE)
 
     def tearDown(self):
-        self.con = None
+        self.con.close()
         os.remove(DB_FILE)
 
     def build_db(self):
