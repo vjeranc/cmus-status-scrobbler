@@ -1,4 +1,7 @@
+<img src="https://user-images.githubusercontent.com/4954310/186700499-1eed3e3f-5c62-49f1-bda9-5407bf28553e.svg" width=20% height=20%>
+
 # cmus-status-scrobbler
+
 ![tests passing status](https://github.com/vjeranc/cmus-status-scrobbler/actions/workflows/run-tests.yml/badge.svg?branch=main)
 
 Works with [cmus](https://cmus.github.io/). Requires Python 3 and has no
