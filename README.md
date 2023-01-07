@@ -21,7 +21,7 @@ Before normal use you should run the program manually with `--auth` to authentic
 * now playing request,
 * uses [MusicBrainz](https://musicbrainz.org) id if present,
 * handles pause status well and
-* is a standalone program (not a continuously running server).
+* is a short-lived program (not a continuously running server).
 
 ## Configuration
 
