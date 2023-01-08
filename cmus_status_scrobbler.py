@@ -372,13 +372,14 @@ def get_conf(conf_path):
         conf.read_file(f)
     return conf
 
+DB_CONNECT_RETRY_ATTEMPTS = 10
 DB_CONNECT_RETRY_SLEEP_SECS = 10
 def db_connect(db_path, log_db=False):
     con = sqlite3.connect(db_path, timeout=DB_CONNECT_TIMEOUT)
     if log_db:
         con.set_trace_callback(logging.debug)
     # retry above command instead until it succeeds
-    while True:
+    for _ in range(DB_CONNECT_RETRY_ATTEMPTS):
         try:
             con.execute('BEGIN IMMEDIATE')
             break
