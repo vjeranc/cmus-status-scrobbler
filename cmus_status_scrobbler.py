@@ -378,7 +378,14 @@ def db_connect(db_path, log_db=False):
     con = sqlite3.connect(db_path, timeout=DB_CONNECT_TIMEOUT)
     if log_db:
         con.set_trace_callback(logging.debug)
-    # retry above command instead until it succeeds
+    # BEGIN IMMEDIATE can return SQLITE_BUSY. After it succeeds, no other query
+    # will return SQLITE_BUSY.
+    # Retrying opens the possibility of incorrect event order but it should not
+    # happen with normal human level usage.
+    # Way around this would be to serialize all events in a single continuously
+    # running process. That was not the point of this simple script.
+    # 10 retries leaves enough room for scrobble ops to finish and release the
+    # db lock.
     for _ in range(DB_CONNECT_RETRY_ATTEMPTS):
         try:
             con.execute('BEGIN IMMEDIATE')
