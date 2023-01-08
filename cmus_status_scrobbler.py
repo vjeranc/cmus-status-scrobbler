@@ -67,6 +67,8 @@ class StatusDB:
         self.con.execute(f"DELETE FROM {self.table_name}")
 
     def save_status_updates(self, status_updates):
+        if not status_updates:
+            return
         self.con.executemany(
             f"INSERT INTO {self.table_name}(pickle) values (?)",
             [(pickle.dumps(su), ) for su in status_updates])
@@ -85,7 +87,7 @@ Status = namedtuple('Status', [
 ])
 
 
-def get_api_sig(params, secret=None):
+def get_api_sig(params, secret):
     m = hashlib.md5()
     for k in sorted(params):
         m.update(k.encode('utf-8'))
@@ -100,19 +102,20 @@ def send_req(api_url,
              shared_secret=None,
              method=None,
              xml=False,
+             timeout_secs=10.,
              **params):
     params = dict(**params)
     params['api_key'] = api_key
     params['method'] = method
     params = {k: v for k, v in params.items() if v is not None}
     if shared_secret:
-        params['api_sig'] = get_api_sig(params, secret=shared_secret)
+        params['api_sig'] = get_api_sig(params, shared_secret)
     if not xml:
         params['format'] = 'json'
     logging.info(params)
     api_req = ur.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
     try:
-        with ur.urlopen(api_req, up.urlencode(params, encoding='utf-8').encode()) as f:
+        with ur.urlopen(api_req, up.urlencode(params, encoding='utf-8').encode(), timeout=timeout_secs) as f:
             res = f.read().decode('utf-8')
             logging.info(res)
             if not res:
@@ -163,7 +166,8 @@ class Scrobbler:
             session = session['session']
         return dict(session_key=session['key'], username=session['name'])
 
-    def make_scrobble(self, i, su):
+    @staticmethod
+    def make_scrobble(i, su):
         return {
             f'artist[{i}]':
             su.artist,
@@ -196,7 +200,7 @@ class Scrobbler:
         batch_scrobble_request = reduce(lambda a, b: {
             **a,
             **b
-        }, [self.make_scrobble(i, su) for (i, su) in enumerate(playing_sus)],
+        }, [Scrobbler.make_scrobble(i, su) for (i, su) in enumerate(playing_sus)],
                                         dict(sk=self.sk))
         if not batch_scrobble_request:
             return
@@ -205,6 +209,7 @@ class Scrobbler:
                  shared_secret=self.shared_secret,
                  method=ScrobblerMethod.SCROBBLE,
                  xml=self.xml,
+                 timeout_secs=5.,  # scrobbling is not critical (saved in db)
                  **batch_scrobble_request)
 
     def send_now_playing(self, cur):
@@ -353,6 +358,8 @@ def update_scrobble_state(db, scrobbler, new_status_update):
 
 def setup_logging(log_path):
     logging.basicConfig(filename=log_path or '/tmp/cmus_scrobbler.log',
+                        datefmt='%Y-%m-%d %H:%M:%S',
+                        format='%(asctime)s %(levelname)s %(message)s',
                         level=logging.DEBUG)
 
 
@@ -428,14 +435,15 @@ def main():
         with open(conf_path, 'w') as f:
             auth(conf).write(f)
         exit()
-
+    status = parse_cmus_status_line(rest)
+    scrobblers = get_scrobblers(conf)
     with db_connect(conf['global'].get('db_path', args.db_path),
                     log_db=conf['global'].get('log_db', args.log_db)) as con:
-        status = parse_cmus_status_line(rest)
         logging.info(repr(status))
-        for scr in get_scrobblers(conf):
-            scr.send_now_playing(status)
+        for scr in scrobblers:
             update_scrobble_state(StatusDB(con, scr.name), scr, status)
+    for scr in scrobblers:
+        scr.send_now_playing(status)
 
 
 if __name__ == "__main__":
