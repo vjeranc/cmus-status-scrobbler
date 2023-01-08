@@ -13,6 +13,7 @@ import logging
 import os
 import pickle
 import sqlite3
+import time
 import urllib.parse as up
 import urllib.request as ur
 
@@ -359,7 +360,7 @@ def update_scrobble_state(db, scrobbler, new_status_update):
 def setup_logging(log_path):
     logging.basicConfig(filename=log_path or '/tmp/cmus_scrobbler.log',
                         datefmt='%Y-%m-%d %H:%M:%S',
-                        format='%(asctime)s %(levelname)s %(message)s',
+                        format='%(process)d %(asctime)s %(levelname)s %(name)s %(message)s',
                         level=logging.DEBUG)
 
 
@@ -371,12 +372,18 @@ def get_conf(conf_path):
         conf.read_file(f)
     return conf
 
-
+DB_CONNECT_RETRY_SLEEP_SECS = 10
 def db_connect(db_path, log_db=False):
     con = sqlite3.connect(db_path, timeout=DB_CONNECT_TIMEOUT)
     if log_db:
         con.set_trace_callback(logging.debug)
-    con.execute('BEGIN IMMEDIATE')  # synchronizing processes
+    # retry above command instead until it succeeds
+    while True:
+        try:
+            con.execute('BEGIN IMMEDIATE')
+            break
+        except sqlite3.OperationalError:
+            time.sleep(DB_CONNECT_RETRY_SLEEP_SECS)
     # when multiple status updates arrive one after another, then
     # if there is no blocking mechanism the order of status updates
     # will not be correct
