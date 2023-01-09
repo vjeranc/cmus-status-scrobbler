@@ -392,6 +392,8 @@ def db_connect(db_path, log_db=False):
             break
         except sqlite3.OperationalError:
             time.sleep(DB_CONNECT_RETRY_SLEEP_SECS)
+    else:
+        raise Exception('Could not connect to db.')
     # when multiple status updates arrive one after another, then
     # if there is no blocking mechanism the order of status updates
     # will not be correct
