@@ -12,4 +12,9 @@ Python version:
 cmus version:
 
 ## Log file
-`tail -n 100 /tmp/cmus_scrobbler.log`
+
+```
+
+tail -n 100 /tmp/cmus_scrobbler.log
+
+```
