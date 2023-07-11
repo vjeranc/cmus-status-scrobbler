@@ -7,13 +7,6 @@
 Works with [cmus](https://cmus.github.io/). Requires Python 3 and has no
 additional dependencies.
 
-You can just call it directly in your `status_display_program.sh`:
-```bash
-cmus_status_scrobbler.py "$@" &
-```
-
-Before normal use you should run the program manually with `--auth` to authenticate with services defined in configuration file. Check `cmus_status_scrobbler.py --help` for more options.
-
 **Features:**
 
 * offline mode,
@@ -22,6 +15,16 @@ Before normal use you should run the program manually with `--auth` to authentic
 * uses [MusicBrainz](https://musicbrainz.org) id if present,
 * handles pause status well and
 * is a short-lived program (not a continuously running process).
+
+## How to use?
+
+Leave `cmus_status_scrobbler.ini` file as is after removing servers you don't use.
+1. Call the program with `--auth` option and follow instructions.
+2. After authenticating with services, `cmus_status_scrobbler.ini` file is edited and saved with new credentials.
+3. `status_display_program.sh` for `cmus` should invoke the program.
+```bash
+cmus_status_scrobbler.py "$@" &
+```
 
 ## Configuration
 
