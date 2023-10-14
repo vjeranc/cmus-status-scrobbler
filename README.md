@@ -21,9 +21,15 @@ additional dependencies.
 Leave `cmus_status_scrobbler.ini` file as is after removing servers you don't use.
 1. Call the program with `--auth` option and follow instructions.
 2. After authenticating with services, `cmus_status_scrobbler.ini` file is edited and saved with new credentials.
-3. `status_display_program.sh` for `cmus` should invoke the program.
+3. Set `cmus_status_scrobbler.py` as your only status display program by invoking
+   `:set status_display_program=path/to/cmus_status_scrobbler.py` in `cmus` or add it to your
+   existing script for `cmus`.
+
+Bash script example:
 ```bash
+# some other display programs
 cmus_status_scrobbler.py "$@" &
+# more display programs
 ```
 
 ## Configuration
