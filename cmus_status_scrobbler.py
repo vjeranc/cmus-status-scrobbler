@@ -357,7 +357,6 @@ def update_scrobble_state(db, scrobbler, new_status_update):
     db.save_status_updates(failed_scrobbles + leftovers)
 
 def get_tmp_dir():
-    candidates = []
     for d in ['TMPDIR', 'TEMP', 'TEMPDIR', 'TMP']:
         c = os.environ.get(d)
         if c:
