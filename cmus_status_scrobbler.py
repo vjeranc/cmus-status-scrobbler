@@ -356,9 +356,18 @@ def update_scrobble_state(db, scrobbler, new_status_update):
     db.clear()
     db.save_status_updates(failed_scrobbles + leftovers)
 
+def get_tmp_dir():
+    candidates = []
+    for d in ['TMPDIR', 'TEMP', 'TEMPDIR', 'TMP']:
+        c = os.environ.get(d)
+        if c:
+            return c
+    return '/tmp'
+
+TMP_DIR = get_tmp_dir()
 
 def setup_logging(log_path):
-    logging.basicConfig(filename=log_path or '/tmp/cmus_scrobbler.log',
+    logging.basicConfig(filename=log_path or os.path.join(TMP_DIR, 'cmus_scrobbler.log'),
                         datefmt='%Y-%m-%d %H:%M:%S',
                         format='%(process)d %(asctime)s %(levelname)s %(name)s %(message)s',
                         level=logging.DEBUG)
