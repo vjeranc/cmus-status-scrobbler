@@ -32,6 +32,11 @@ cmus_status_scrobbler.py "$@" &
 # more display programs
 ```
 
+### Termux
+
+https://github.com/vjeranc/cmus-status-scrobbler/issues/10#issuecomment-1970103562
+Make sure to run `chmod +rx status_display_program.sh` (or `chmod +rx cmus_status_scrobbler.py`) before `:set status_display_program=...`.
+
 ## Configuration
 
 Example file `cmus_status_scrobbler.ini` is in the repository.
