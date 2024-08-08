@@ -238,7 +238,7 @@ class Scrobbler:
 
 def parse_cmus_status_line(ls):
     r = dict(
-        cur_time=datetime.datetime.utcnow(),
+        cur_time=datetime.datetime.now(datetime.timezone.utc),
         musicbrainz_trackid=None,
         discnumber=1,
         tracknumber=None,
