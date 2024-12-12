@@ -32,7 +32,9 @@ class TestCmusStatusScrobblerIntegration(unittest.TestCase):
         def run_scrobbler():
             subprocess.run([
                 PYTHON_EXECUTABLE, CMUS_STATUS_SCROBBLER_PATH, '--ini', INI_PATH,
-                'status', 'stopped'
+                'status', 'playing', 'file', '/home/user/Music/song1.mp3',
+                'artist', 'Artist A', 'album', 'Album X', 'title', 'Song 1',
+                'duration', '240'
             ])
 
         # Create and start multiple processes
