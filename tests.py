@@ -11,8 +11,13 @@ def secs(n):
     return datetime.timedelta(seconds=n)
 
 
-SS = namedtuple('SS', 'cur_time duration file status')
+_SS = namedtuple('_SS', 'cur_time duration file status')
 
+def SS(*, cur_time, duration, file, status):
+   return _SS(cur_time=cur_time.timestamp(), duration=duration, file=file, status=status)
+
+def utcnow():
+   return datetime.datetime.now(datetime.timezone.utc)
 
 class TestCalculateScrobbles(unittest.TestCase):
 
@@ -21,7 +26,7 @@ class TestCalculateScrobbles(unittest.TestCase):
             self.assertEqual(expected, actual)
 
     def test_simple_play_stop(self):
-        d = datetime.datetime.utcnow()
+        d = utcnow()
         ss = [
             SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
             SS(cur_time=d + secs(4),
@@ -35,7 +40,7 @@ class TestCalculateScrobbles(unittest.TestCase):
         self.assertEqual(ss[0], scrobbles[0])
 
     def test_repeat(self):
-        d = datetime.datetime.utcnow()
+        d = utcnow()
         ss = [
             SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
             SS(cur_time=d + secs(4),
@@ -50,7 +55,7 @@ class TestCalculateScrobbles(unittest.TestCase):
         self.assertEqual(ss[1], leftovers[0])
 
     def test_play_pause(self):
-        d = datetime.datetime.utcnow()
+        d = utcnow()
         ss = [
             SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
             SS(cur_time=d + secs(4),
@@ -65,7 +70,7 @@ class TestCalculateScrobbles(unittest.TestCase):
         self.assertEqual(ss[1], leftovers[1])
 
     def test_play_pause_stopped(self):
-        d = datetime.datetime.utcnow()
+        d = utcnow()
         ss = [
             SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
             SS(
@@ -83,7 +88,7 @@ class TestCalculateScrobbles(unittest.TestCase):
         self.assertEqual([], leftovers)
 
     def test_play_pause_play_pause_dotdotdot_stopped(self):
-        d = datetime.datetime.utcnow()
+        d = utcnow()
         ss = [
             SS(cur_time=d, duration=10, file='A', status=CmusStatus.playing),
             SS(cur_time=d + secs(1),
@@ -141,7 +146,7 @@ class TestCalculateScrobbles(unittest.TestCase):
         self.assertEqual(ss[0], scrobbles[0])
 
     def test_play_pause_stopped_enough_time_played(self):
-        d = datetime.datetime.utcnow()
+        d = utcnow()
         ss = [
             SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
             SS(
@@ -159,7 +164,7 @@ class TestCalculateScrobbles(unittest.TestCase):
         self.assertEqual(ss[0], scrobbles[0])
 
     def test_normal_player_status(self):
-        d = datetime.datetime.utcnow()
+        d = utcnow()
         ss = [
             SS(cur_time=d, duration=1, file='A', status=CmusStatus.playing),
             SS(cur_time=d + secs(2),
@@ -193,7 +198,7 @@ class TestCalculateScrobbles(unittest.TestCase):
         self.assertArrayEqual(ss[:-1], scrobbles)
 
     def test_pause_play_suffix_leftovers(self):
-        d = datetime.datetime.utcnow()
+        d = utcnow()
         ss = [
             SS(cur_time=d, duration=1, file='A', status=CmusStatus.playing),
             SS(cur_time=d + secs(2),
@@ -257,7 +262,7 @@ class TestCalculateScrobbles(unittest.TestCase):
         #   1. stopped
         #   2. playing again
         #   3. different file
-        d = datetime.datetime.utcnow()
+        d = utcnow()
         a = dict(cur_time=d, duration=10, file='A', status=CmusStatus.playing)
         for stop in [
                 dict(file='B'),

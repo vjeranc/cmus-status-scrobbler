@@ -9,6 +9,15 @@ CMUS_STATUS_SCROBBLER_PATH = './cmus_status_scrobbler.py'
 INI_PATH = './test.ini'
 DB_PATH = './test.sqlite3'
 
+def run_scrobbler():
+    subprocess.run([
+        PYTHON_EXECUTABLE, CMUS_STATUS_SCROBBLER_PATH, '--ini', INI_PATH,
+        'status', 'playing', 'file', '/home/user/Music/song1.mp3',
+        'artist', 'Artist A', 'album', 'Album X', 'title', 'Song 1',
+        'duration', '240'
+    ])
+
+
 class TestCmusStatusScrobblerIntegration(unittest.TestCase):
 
     def setUp(self):
@@ -29,14 +38,6 @@ class TestCmusStatusScrobblerIntegration(unittest.TestCase):
 
     def test_multiple_invocations_with_empty_status(self):
         # Define a function to run cmus_status_scrobbler.py
-        def run_scrobbler():
-            subprocess.run([
-                PYTHON_EXECUTABLE, CMUS_STATUS_SCROBBLER_PATH, '--ini', INI_PATH,
-                'status', 'playing', 'file', '/home/user/Music/song1.mp3',
-                'artist', 'Artist A', 'album', 'Album X', 'title', 'Song 1',
-                'duration', '240'
-            ])
-
         # Create and start multiple processes
         processes = [Process(target=run_scrobbler) for _ in range(5)]
         for p in processes:
