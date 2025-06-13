@@ -10,4 +10,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2 
       - run: python tests.py
-      
+    steps:
+      - uses: actions/checkout@v2
+      - name: Unit tests
+        run: python tests.py
+      - name: Concurrency tests
+        run: python test_cmus_status_scrobbler.py

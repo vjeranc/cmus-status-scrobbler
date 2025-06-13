@@ -64,6 +64,7 @@ class StatusDB:
             status_updates.append(pickle.loads(row[0]))
             su = status_updates[-1]
             if isinstance(su.cur_time, datetime.datetime):
+                # FIXME remove in 3 years, assuming everyone is on latest
                 status_updates[-1] = su._replace(cur_time=su.cur_time.timestamp())
         return status_updates
 
