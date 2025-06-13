@@ -62,6 +62,9 @@ class StatusDB:
         status_updates = []
         for row in cur:
             status_updates.append(pickle.loads(row[0]))
+            su = status_updates[-1]
+            if isinstance(su.cur_time, datetime.datetime):
+                status_updates[-1] = su._replace(cur_time=su.cur_time.timestamp())
         return status_updates
 
     def clear(self):
@@ -175,10 +178,7 @@ class Scrobbler:
             f'track[{i}]':
             su.title,
             f'timestamp[{i}]':
-            str(
-                int(
-                    su.cur_time.replace(
-                        tzinfo=datetime.timezone.utc).timestamp())),
+            str(int(su.cur_time)),
             f'album[{i}]':
             su.album,
             f'trackNumber[{i}]':
@@ -238,7 +238,7 @@ class Scrobbler:
 
 def parse_cmus_status_line(ls):
     r = dict(
-        cur_time=datetime.datetime.now(datetime.timezone.utc),
+        cur_time=datetime.datetime.now(datetime.timezone.utc).timestamp(),
         musicbrainz_trackid=None,
         discnumber=1,
         tracknumber=None,
@@ -320,7 +320,7 @@ def calculate_scrobbles(status_updates, perc_thresh=0.5, secs_thresh=4 * 60):
 
         if equal_tracks(cur, nxt2) and nxt2.status == CmusStatus.playing:
             # playing continued, keeping already played time for next
-            ptbp += (nxt.cur_time - cur.cur_time).total_seconds()
+            ptbp += nxt.cur_time - cur.cur_time
             ptbp_status = cur if not ptbp_status else ptbp_status
             continue
         # playing did not continue, nxt2 file is not None and it's either a
