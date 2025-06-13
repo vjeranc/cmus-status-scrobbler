@@ -258,7 +258,7 @@ def has_played_enough(start_ts,
                       secs_thresh,
                       ptbp=0):
     duration = int(duration)
-    total = (end_ts - start_ts).total_seconds() + ptbp
+    total = end_ts - start_ts + ptbp
     return total / duration >= perc_thresh or total >= secs_thresh
 
 
