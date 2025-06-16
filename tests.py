@@ -1,278 +1,293 @@
-import unittest
-from cmus_status_scrobbler import calculate_scrobbles, CmusStatus, StatusDB, update_scrobble_state
+"""
+This script is a test suite for the cmus_status_scrobbler.py script.
+"""
 import datetime
-from collections import namedtuple
-import sqlite3
-import os
 import itertools as it
+import os
+import sqlite3
+import unittest
+from collections import namedtuple
+
+from cmus_status_scrobbler import (
+    CmusStatus,
+    StatusDB,
+    calculate_scrobbles,
+    update_scrobble_state,
+)
 
 
 def secs(n):
-    return datetime.timedelta(seconds=n)
+	return datetime.timedelta(seconds=n)
 
 
 _SS = namedtuple('_SS', 'cur_time duration file status')
 
+
 def SS(*, cur_time, duration, file, status):
-   return _SS(cur_time=cur_time.timestamp(), duration=duration, file=file, status=status)
+	return _SS(cur_time=cur_time.timestamp(),
+	           duration=duration,
+	           file=file,
+	           status=status)
+
 
 def utcnow():
-   return datetime.datetime.now(datetime.timezone.utc)
+	return datetime.datetime.now(datetime.timezone.utc)
+
 
 class TestCalculateScrobbles(unittest.TestCase):
 
-    def assertArrayEqual(self, ar1, ar2):
-        for expected, actual in it.zip_longest(ar1, ar2):
-            self.assertEqual(expected, actual)
+	def assertArrayEqual(self, ar1, ar2):
+		for expected, actual in it.zip_longest(ar1, ar2):
+			self.assertEqual(expected, actual)
 
-    def test_simple_play_stop(self):
-        d = utcnow()
-        ss = [
-            SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
-            SS(cur_time=d + secs(4),
-               duration=5,
-               file='A',
-               status=CmusStatus.stopped)
-        ]
-        scrobbles, leftovers = calculate_scrobbles(ss)
-        # track when started playing
-        self.assertEqual(CmusStatus.playing, scrobbles[0].status)
-        self.assertEqual(ss[0], scrobbles[0])
+	def test_simple_play_stop(self):
+		d = utcnow()
+		ss = [
+		    SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
+		    SS(cur_time=d+secs(4),
+		       duration=5,
+		       file='A',
+		       status=CmusStatus.stopped)
+		]
+		scrobbles, leftovers = calculate_scrobbles(ss)
+		# track when started playing
+		self.assertEqual(CmusStatus.playing, scrobbles[0].status)
+		self.assertEqual(ss[0], scrobbles[0])
 
-    def test_repeat(self):
-        d = utcnow()
-        ss = [
-            SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
-            SS(cur_time=d + secs(4),
-               duration=5,
-               file='A',
-               status=CmusStatus.playing)
-        ]
-        scrobbles, leftovers = calculate_scrobbles(ss)
-        # track when started playing
-        self.assertEqual(CmusStatus.playing, scrobbles[0].status)
-        self.assertEqual(ss[0], scrobbles[0])
-        self.assertEqual(ss[1], leftovers[0])
+	def test_repeat(self):
+		d = utcnow()
+		ss = [
+		    SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
+		    SS(cur_time=d+secs(4),
+		       duration=5,
+		       file='A',
+		       status=CmusStatus.playing)
+		]
+		scrobbles, leftovers = calculate_scrobbles(ss)
+		# track when started playing
+		self.assertEqual(CmusStatus.playing, scrobbles[0].status)
+		self.assertEqual(ss[0], scrobbles[0])
+		self.assertEqual(ss[1], leftovers[0])
 
-    def test_play_pause(self):
-        d = utcnow()
-        ss = [
-            SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
-            SS(cur_time=d + secs(4),
-               duration=5,
-               file='A',
-               status=CmusStatus.paused)
-        ]
-        scrobbles, leftovers = calculate_scrobbles(ss)
-        self.assertEqual([], scrobbles)
-        # track when started playing
-        self.assertEqual(ss[0], leftovers[0])
-        self.assertEqual(ss[1], leftovers[1])
+	def test_play_pause(self):
+		d = utcnow()
+		ss = [
+		    SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
+		    SS(cur_time=d+secs(4),
+		       duration=5,
+		       file='A',
+		       status=CmusStatus.paused)
+		]
+		scrobbles, leftovers = calculate_scrobbles(ss)
+		self.assertEqual([], scrobbles)
+		# track when started playing
+		self.assertEqual(ss[0], leftovers[0])
+		self.assertEqual(ss[1], leftovers[1])
 
-    def test_play_pause_stopped(self):
-        d = utcnow()
-        ss = [
-            SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
-            SS(
-                cur_time=d + secs(1),  # not enough time
-                duration=5,
-                file='A',
-                status=CmusStatus.paused),
-            SS(cur_time=d + secs(20),
-               duration=5,
-               file='A',
-               status=CmusStatus.stopped)
-        ]
-        scrobbles, leftovers = calculate_scrobbles(ss)
-        self.assertEqual([], scrobbles)
-        self.assertEqual([], leftovers)
+	def test_play_pause_stopped(self):
+		d = utcnow()
+		ss = [
+		    SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
+		    SS(
+		        cur_time=d+secs(1),  # not enough time
+		        duration=5,
+		        file='A',
+		        status=CmusStatus.paused),
+		    SS(cur_time=d+secs(20),
+		       duration=5,
+		       file='A',
+		       status=CmusStatus.stopped)
+		]
+		scrobbles, leftovers = calculate_scrobbles(ss)
+		self.assertEqual([], scrobbles)
+		self.assertEqual([], leftovers)
 
-    def test_play_pause_play_pause_dotdotdot_stopped(self):
-        d = utcnow()
-        ss = [
-            SS(cur_time=d, duration=10, file='A', status=CmusStatus.playing),
-            SS(cur_time=d + secs(1),
-               duration=10,
-               file='A',
-               status=CmusStatus.paused),
-            SS(cur_time=d + secs(100),
-               duration=10,
-               file='A',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(101),
-               duration=10,
-               file='A',
-               status=CmusStatus.paused),
-            SS(cur_time=d + secs(200),
-               duration=10,
-               file='A',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(201),
-               duration=10,
-               file='A',
-               status=CmusStatus.paused),
-            SS(cur_time=d + secs(300),
-               duration=10,
-               file='A',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(301),
-               duration=10,
-               file='A',
-               status=CmusStatus.paused),
-            SS(cur_time=d + secs(400),
-               duration=10,
-               file='A',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(401),
-               duration=10,
-               file='A',
-               status=CmusStatus.paused),
-            SS(cur_time=d + secs(402),
-               duration=10,
-               file='A',
-               status=CmusStatus.stopped)
-        ]
-        scrobbles, leftovers = calculate_scrobbles(ss[:6])
-        self.assertEqual([], scrobbles)
-        self.assertEqual(6, len(leftovers))
-        self.assertArrayEqual(ss[:6], leftovers)
-        # trying out with last second missing from scrobblable playtime
-        scrobbles, leftovers = calculate_scrobbles(ss[:-3] + [ss[-1]])
-        self.assertEqual([], leftovers)
-        self.assertEqual([], scrobbles)
-        scrobbles, leftovers = calculate_scrobbles(ss)
-        self.assertEqual([], leftovers)
-        self.assertEqual(1, len(scrobbles))
-        self.assertEqual(ss[0], scrobbles[0])
+	def test_play_pause_play_pause_dotdotdot_stopped(self):
+		d = utcnow()
+		ss = [
+		    SS(cur_time=d, duration=10, file='A', status=CmusStatus.playing),
+		    SS(cur_time=d+secs(1),
+		       duration=10,
+		       file='A',
+		       status=CmusStatus.paused),
+		    SS(cur_time=d+secs(100),
+		       duration=10,
+		       file='A',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(101),
+		       duration=10,
+		       file='A',
+		       status=CmusStatus.paused),
+		    SS(cur_time=d+secs(200),
+		       duration=10,
+		       file='A',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(201),
+		       duration=10,
+		       file='A',
+		       status=CmusStatus.paused),
+		    SS(cur_time=d+secs(300),
+		       duration=10,
+		       file='A',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(301),
+		       duration=10,
+		       file='A',
+		       status=CmusStatus.paused),
+		    SS(cur_time=d+secs(400),
+		       duration=10,
+		       file='A',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(401),
+		       duration=10,
+		       file='A',
+		       status=CmusStatus.paused),
+		    SS(cur_time=d+secs(402),
+		       duration=10,
+		       file='A',
+		       status=CmusStatus.stopped)
+		]
+		scrobbles, leftovers = calculate_scrobbles(ss[:6])
+		self.assertEqual([], scrobbles)
+		self.assertEqual(6, len(leftovers))
+		self.assertArrayEqual(ss[:6], leftovers)
+		# trying out with last second missing from scrobblable playtime
+		scrobbles, leftovers = calculate_scrobbles(ss[:-3]+[ss[-1]])
+		self.assertEqual([], leftovers)
+		self.assertEqual([], scrobbles)
+		scrobbles, leftovers = calculate_scrobbles(ss)
+		self.assertEqual([], leftovers)
+		self.assertEqual(1, len(scrobbles))
+		self.assertEqual(ss[0], scrobbles[0])
 
-    def test_play_pause_stopped_enough_time_played(self):
-        d = utcnow()
-        ss = [
-            SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
-            SS(
-                cur_time=d + secs(3),  # enough time played
-                duration=5,
-                file='A',
-                status=CmusStatus.paused),
-            SS(cur_time=d + secs(20),
-               duration=5,
-               file='A',
-               status=CmusStatus.stopped)
-        ]
-        scrobbles, leftovers = calculate_scrobbles(ss)
-        self.assertEqual([], leftovers)
-        self.assertEqual(ss[0], scrobbles[0])
+	def test_play_pause_stopped_enough_time_played(self):
+		d = utcnow()
+		ss = [
+		    SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
+		    SS(
+		        cur_time=d+secs(3),  # enough time played
+		        duration=5,
+		        file='A',
+		        status=CmusStatus.paused),
+		    SS(cur_time=d+secs(20),
+		       duration=5,
+		       file='A',
+		       status=CmusStatus.stopped)
+		]
+		scrobbles, leftovers = calculate_scrobbles(ss)
+		self.assertEqual([], leftovers)
+		self.assertEqual(ss[0], scrobbles[0])
 
-    def test_normal_player_status(self):
-        d = utcnow()
-        ss = [
-            SS(cur_time=d, duration=1, file='A', status=CmusStatus.playing),
-            SS(cur_time=d + secs(2),
-               duration=1,
-               file='B',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(3),
-               duration=1,
-               file='C',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(5),
-               duration=1,
-               file='D',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(7),
-               duration=1,
-               file='E',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(9),
-               duration=1,
-               file='F',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(11),
-               duration=1,
-               file='F',
-               status=CmusStatus.stopped),
-        ]
-        scrobbles, leftovers = calculate_scrobbles(ss)
-        self.assertEqual(6, len(scrobbles))
-        self.assertEqual([], leftovers)
-        self.assertArrayEqual(ss[:-1], scrobbles)
+	def test_normal_player_status(self):
+		d = utcnow()
+		ss = [
+		    SS(cur_time=d, duration=1, file='A', status=CmusStatus.playing),
+		    SS(cur_time=d+secs(2),
+		       duration=1,
+		       file='B',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(3),
+		       duration=1,
+		       file='C',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(5),
+		       duration=1,
+		       file='D',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(7),
+		       duration=1,
+		       file='E',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(9),
+		       duration=1,
+		       file='F',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(11),
+		       duration=1,
+		       file='F',
+		       status=CmusStatus.stopped),
+		]
+		scrobbles, leftovers = calculate_scrobbles(ss)
+		self.assertEqual(6, len(scrobbles))
+		self.assertEqual([], leftovers)
+		self.assertArrayEqual(ss[:-1], scrobbles)
 
-    def test_pause_play_suffix_leftovers(self):
-        d = utcnow()
-        ss = [
-            SS(cur_time=d, duration=1, file='A', status=CmusStatus.playing),
-            SS(cur_time=d + secs(2),
-               duration=1,
-               file='B',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(3),
-               duration=1,
-               file='C',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(5),
-               duration=1,
-               file='D',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(7),
-               duration=1,
-               file='E',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(9),
-               duration=1,
-               file='F',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(11),
-               duration=1,
-               file='F',
-               status=CmusStatus.stopped),
-            SS(cur_time=d + secs(13),
-               duration=10,
-               file='*',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(15),
-               duration=10,
-               file='*',
-               status=CmusStatus.paused),
-            SS(cur_time=d + secs(17),
-               duration=10,
-               file='*',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(21),
-               duration=10,
-               file='*',
-               status=CmusStatus.paused),
-            SS(cur_time=d + secs(23),
-               duration=10,
-               file='*',
-               status=CmusStatus.playing),
-            SS(cur_time=d + secs(25),
-               duration=10,
-               file='*',
-               status=CmusStatus.paused),
-        ]
-        scrobbles, leftovers = calculate_scrobbles(ss)
-        self.assertEqual(6, len(leftovers))
-        self.assertEqual(6, len(scrobbles))
-        self.assertArrayEqual(ss[:6], scrobbles)
-        # stopped will not be in leftovers
-        self.assertArrayEqual(ss[7:], leftovers)
+	def test_pause_play_suffix_leftovers(self):
+		d = utcnow()
+		ss = [
+		    SS(cur_time=d, duration=1, file='A', status=CmusStatus.playing),
+		    SS(cur_time=d+secs(2),
+		       duration=1,
+		       file='B',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(3),
+		       duration=1,
+		       file='C',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(5),
+		       duration=1,
+		       file='D',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(7),
+		       duration=1,
+		       file='E',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(9),
+		       duration=1,
+		       file='F',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(11),
+		       duration=1,
+		       file='F',
+		       status=CmusStatus.stopped),
+		    SS(cur_time=d+secs(13),
+		       duration=10,
+		       file='*',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(15),
+		       duration=10,
+		       file='*',
+		       status=CmusStatus.paused),
+		    SS(cur_time=d+secs(17),
+		       duration=10,
+		       file='*',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(21),
+		       duration=10,
+		       file='*',
+		       status=CmusStatus.paused),
+		    SS(cur_time=d+secs(23),
+		       duration=10,
+		       file='*',
+		       status=CmusStatus.playing),
+		    SS(cur_time=d+secs(25),
+		       duration=10,
+		       file='*',
+		       status=CmusStatus.paused),
+		]
+		scrobbles, leftovers = calculate_scrobbles(ss)
+		self.assertEqual(6, len(leftovers))
+		self.assertEqual(6, len(scrobbles))
+		self.assertArrayEqual(ss[:6], scrobbles)
+		# stopped will not be in leftovers
+		self.assertArrayEqual(ss[7:], leftovers)
 
-    def test_scrobble_criteria(self):
-        # Should stop when:
-        #   1. stopped
-        #   2. playing again
-        #   3. different file
-        d = utcnow()
-        a = dict(cur_time=d, duration=10, file='A', status=CmusStatus.playing)
-        for stop in [
-                dict(file='B'),
-                dict(status=CmusStatus.playing),
-                dict(status=CmusStatus.stopped)
-        ]:
-            ss = [SS(**a), SS(**{**a, **stop, 'cur_time': d + secs(10)})]
-            scrobbles, leftovers = calculate_scrobbles(ss)
-            self.assertEqual(1, len(scrobbles))
-            self.assertEqual(ss[0], scrobbles[0])
+	def test_scrobble_criteria(self):
+		# Should stop when:
+		#   1. stopped
+		#   2. playing again
+		#   3. different file
+		d = utcnow()
+		a = dict(cur_time=d, duration=10, file='A', status=CmusStatus.playing)
+		for stop in [
+		    dict(file='B'),
+		    dict(status=CmusStatus.playing),
+		    dict(status=CmusStatus.stopped)
+		]:
+			ss = [SS(**a), SS(**{**a, **stop, 'cur_time': d+secs(10)})]
+			scrobbles, leftovers = calculate_scrobbles(ss)
+			self.assertEqual(1, len(scrobbles))
+			self.assertEqual(ss[0], scrobbles[0])
 
 
 DB_FILE = 'test.sqlite3'
@@ -280,62 +295,62 @@ DB_FILE = 'test.sqlite3'
 
 class TestStatusDB(unittest.TestCase):
 
-    def setUp(self):
-        self.con = sqlite3.connect(DB_FILE)
+	def setUp(self):
+		self.con = sqlite3.connect(DB_FILE)
 
-    def tearDown(self):
-        self.con.close()
-        os.remove(DB_FILE)
+	def tearDown(self):
+		self.con.close()
+		os.remove(DB_FILE)
 
-    def build_db(self):
-        return StatusDB(self.con, 'test_table_name')
+	def build_db(self):
+		return StatusDB(self.con, 'test_table_name')
 
-    def assertArrayEqual(self, ar1, ar2):
-        for expected, actual in it.zip_longest(ar1, ar2):
-            self.assertEqual(expected, actual)
+	def assertArrayEqual(self, ar1, ar2):
+		for expected, actual in it.zip_longest(ar1, ar2):
+			self.assertEqual(expected, actual)
 
-    def update_scrobble_state(self, db, new_su):
-        sc = namedtuple('SC', 'scrobble')(scrobble=lambda x: None)
-        update_scrobble_state(db, sc, new_su)
+	def update_scrobble_state(self, db, new_su):
+		sc = namedtuple('SC', 'scrobble')(scrobble=lambda x: None)
+		update_scrobble_state(db, sc, new_su)
 
-    def test_update(self):
-        d = datetime.datetime.now()
-        sus = [
-            SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
-            SS(cur_time=d + secs(1),
-               duration=5,
-               file='A',
-               status=CmusStatus.paused)
-        ]
-        new_su = SS(cur_time=d + secs(3),
-                    duration=5,
-                    file='A',
-                    status=CmusStatus.playing)
-        with self.con:
-            db = self.build_db()
-            db.save_status_updates(sus)
-            self.assertArrayEqual(sus, db.get_status_updates())
-            self.update_scrobble_state(db, new_su)
-            n_sus = db.get_status_updates()
-            self.assertArrayEqual(sus + [new_su], n_sus)
+	def test_update(self):
+		d = datetime.datetime.now()
+		sus = [
+		    SS(cur_time=d, duration=5, file='A', status=CmusStatus.playing),
+		    SS(cur_time=d+secs(1),
+		       duration=5,
+		       file='A',
+		       status=CmusStatus.paused)
+		]
+		new_su = SS(cur_time=d+secs(3),
+		            duration=5,
+		            file='A',
+		            status=CmusStatus.playing)
+		with self.con:
+			db = self.build_db()
+			db.save_status_updates(sus)
+			self.assertArrayEqual(sus, db.get_status_updates())
+			self.update_scrobble_state(db, new_su)
+			n_sus = db.get_status_updates()
+			self.assertArrayEqual(sus+[new_su], n_sus)
 
-    def test_scrobble_update(self):
-        # some tracks will scrobble and will no longer be stored
-        d = datetime.datetime.now()
-        sus = [
-            SS(cur_time=d, duration=10, file='B', status=CmusStatus.playing)
-        ]
-        new_su = SS(cur_time=d + secs(10),
-                    duration=5,
-                    file='A',
-                    status=CmusStatus.playing)
-        with self.con:
-            db = self.build_db()
-            db.save_status_updates(sus)
-            self.update_scrobble_state(db, new_su)
-            n_sus = db.get_status_updates()
-            self.assertArrayEqual([new_su], n_sus)
+	def test_scrobble_update(self):
+		# some tracks will scrobble and will no longer be stored
+		d = datetime.datetime.now()
+		sus = [
+		    SS(cur_time=d, duration=10, file='B', status=CmusStatus.playing)
+		]
+		new_su = SS(cur_time=d+secs(10),
+		            duration=5,
+		            file='A',
+		            status=CmusStatus.playing)
+		with self.con:
+			db = self.build_db()
+			db.save_status_updates(sus)
+			self.update_scrobble_state(db, new_su)
+			n_sus = db.get_status_updates()
+			self.assertArrayEqual([new_su], n_sus)
 
 
-if __name__ == '__main__':
-    unittest.main()
+if __name__=='__main__':
+	unittest.main()
