@@ -1,0 +1,8 @@
+[style]
+use_tabs = true
+no_spaces_around_selected_binary_operators = +,-,*,/,//,=,==,!=,**,<,>,<=,>=,&,^,|,<<,>>,%%
+spaces_around_default_or_named_assign = False
+join_multiple_lines = True
+space_inside_brackets = False
+blank_lines_between_top_level_imports_and_variables = 0
+split_complex_comprehension = False
