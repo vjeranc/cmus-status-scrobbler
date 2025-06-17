@@ -109,6 +109,19 @@ def get_api_sig(params, secret):
 	return m.hexdigest()
 
 
+KEYS_TO_REDACT = [b'api_key', b'sk', b'api_sig', b'token', b'session_key']
+
+
+def redact_dict(d):
+	if not isinstance(d, dict):
+		return d
+	d = d.copy()
+	for k, v in d.items():
+		if k in KEYS_TO_REDACT:
+			d[k] = '<REDACTED>'
+	return d
+
+
 def send_req(api_url,
              api_key,
              ignore_request_fail=False,
@@ -128,7 +141,7 @@ def send_req(api_url,
 		params['api_sig'] = get_api_sig(params, shared_secret)
 	if not xml:
 		params['format'] = 'json'
-	logging.info(params)
+	logging.info(redact_dict(params))
 	api_req = ur.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
 	try:
 		with ur.urlopen(api_req,
@@ -136,7 +149,6 @@ def send_req(api_url,
 		                             errors='ignore').encode(),
 		                timeout=timeout_secs) as f:
 			res = f.read().decode('utf-8')
-			logging.info(res)
 			if not res:
 				return None
 			if not xml:
