@@ -149,6 +149,7 @@ def send_req(api_url,
 		                             errors='ignore').encode(),
 		                timeout=timeout_secs) as f:
 			res = f.read().decode('utf-8')
+			logging.info(res)
 			if not res:
 				return None
 			if not xml:
