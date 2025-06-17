@@ -257,6 +257,7 @@ class Scrobbler:
 
 
 def parse_cmus_status_line(ls):
+	logging.info(ls)
 	r = dict(
 	    cur_time=datetime.datetime.now(datetime.timezone.utc).timestamp(),
 	    musicbrainz_trackid=None,
