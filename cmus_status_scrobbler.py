@@ -103,9 +103,9 @@ def safe_utf8_encode(text):
 def get_api_sig(params, secret):
 	m = hashlib.md5()
 	for k in sorted(params):
-		m.update(safe_utf8_encode(k))
-		m.update(safe_utf8_encode(params[k]))
-	m.update(safe_utf8_encode(secret))
+		m.update(k)
+		m.update(params[k])
+	m.update(secret.encode('utf-8'))
 	return m.hexdigest()
 
 
@@ -120,7 +120,10 @@ def send_req(api_url,
 	params = dict(**params)
 	params['api_key'] = api_key
 	params['method'] = method
-	params = {k: v for k, v in params.items() if v is not None}
+	params = {
+	    safe_utf8_encode(k): safe_utf8_encode(v)
+	    for k, v in params.items() if v is not None
+	}
 	if shared_secret:
 		params['api_sig'] = get_api_sig(params, shared_secret)
 	if not xml:
@@ -129,7 +132,8 @@ def send_req(api_url,
 	api_req = ur.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
 	try:
 		with ur.urlopen(api_req,
-		                up.urlencode(params, encoding='utf-8').encode(),
+		                up.urlencode(params, encoding='utf-8',
+		                             errors='ignore').encode(),
 		                timeout=timeout_secs) as f:
 			res = f.read().decode('utf-8')
 			logging.info(res)
