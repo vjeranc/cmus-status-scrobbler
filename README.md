@@ -1,5 +1,3 @@
-<p align=center><img src="https://user-images.githubusercontent.com/4954310/186776680-213451db-cbd5-45ff-8f36-29f4fb17459c.svg" width=30% height=30%></p>
-
 # cmus-status-scrobbler
 
 ![tests passing status](https://github.com/vjeranc/cmus-status-scrobbler/actions/workflows/run-tests.yml/badge.svg?branch=main)
