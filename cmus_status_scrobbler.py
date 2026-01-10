@@ -29,16 +29,17 @@ from dataclasses import dataclass
 from operator import attrgetter
 from typing import (
     Annotated,
+    Dict,
+    List,
     NamedTuple,
     Optional,
+    TYPE_CHECKING,
     Union,
     get_args,
     get_origin,
     get_type_hints,
 )
-try:
-	from typing import TypeAlias, TypeGuard
-except ImportError:  # pragma: no cover - needed for Python 3.9
+if TYPE_CHECKING:
 	from typing_extensions import TypeAlias, TypeGuard
 STATUS_STOPPED = 'stopped'
 STATUS_PLAYING = 'playing'
@@ -51,8 +52,8 @@ SCROBBLER_SCROBBLE = 'track.scrobble'
 
 KEYS_TO_REDACT = [b'api_key', b'sk', b'api_sig', b'token', b'session_key']
 
-JSONValue: TypeAlias = Union[str, int, float, bool, None, list['JSONValue'],
-                             dict[str, 'JSONValue']]
+JSONValue: 'TypeAlias' = Union[str, int, float, bool, None, List['JSONValue'],
+                               Dict[str, 'JSONValue']]
 
 
 @dataclass(frozen=True)
