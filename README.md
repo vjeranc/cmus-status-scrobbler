@@ -1,8 +1,8 @@
 # cmus-status-scrobbler
 
-![tests passing status](https://github.com/vjeranc/cmus-status-scrobbler/actions/workflows/run-tests.yml/badge.svg?branch=main)
+![tests passing status](https://github.com/vjeranc/cmus-status-scrobbler/actions/workflows/ci.yml/badge.svg?branch=main)
 
-Works with [cmus](https://cmus.github.io/). Requires Python 3 and has no
+Works with [cmus](https://cmus.github.io/). Requires Python 3.9+ and has no
 additional dependencies.
 
 **Features:**

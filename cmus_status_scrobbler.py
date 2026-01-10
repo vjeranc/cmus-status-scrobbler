@@ -27,16 +27,19 @@ import urllib.request as ur
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from operator import attrgetter
-from types import NoneType, UnionType
 from typing import (
     Annotated,
     NamedTuple,
-    TypeGuard,
+    Optional,
     Union,
     get_args,
     get_origin,
     get_type_hints,
 )
+try:
+	from typing import TypeAlias, TypeGuard
+except ImportError:  # pragma: no cover - needed for Python 3.9
+	from typing_extensions import TypeAlias, TypeGuard
 STATUS_STOPPED = 'stopped'
 STATUS_PLAYING = 'playing'
 STATUS_PAUSED = 'paused'
@@ -48,14 +51,15 @@ SCROBBLER_SCROBBLE = 'track.scrobble'
 
 KEYS_TO_REDACT = [b'api_key', b'sk', b'api_sig', b'token', b'session_key']
 
-JSONValue = (str|int|float|bool|None|list['JSONValue']|dict[str, 'JSONValue'])
+JSONValue: TypeAlias = Union[str, int, float, bool, None, list['JSONValue'],
+                             dict[str, 'JSONValue']]
 
 
 @dataclass(frozen=True)
 class ArgDef:
 	flags: tuple[str, ...]
 	help: str
-	action: str|None = None
+	action: Optional[str] = None
 	required: bool = False
 
 
@@ -84,7 +88,7 @@ class Args:
 	    ),
 	]
 	log_path: Annotated[
-	    str|None,
+	    Optional[str],
 	    ArgDef(
 	        flags=('--log-path', ),
 	        help=
@@ -100,7 +104,7 @@ class Args:
 	    ),
 	]
 	cur_time: Annotated[
-	    float|None,
+	    Optional[float],
 	    ArgDef(
 	        flags=('--cur-time', ),
 	        help='Override current time for status update (unix timestamp).',
@@ -129,7 +133,7 @@ class GlobalConfig:
 	log_db: bool
 	now_playing: bool
 	format_xml: bool
-	log_path: str|None
+	log_path: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -139,7 +143,7 @@ class ServiceConfig:
 	auth_url: str
 	api_key: str
 	shared_secret: str
-	session_key: str|None
+	session_key: Optional[str]
 	now_playing: bool
 	format_xml: bool
 
@@ -153,15 +157,15 @@ class AppConfig:
 class Status(NamedTuple):
 	status: str
 	file: str
-	artist: str|None
-	albumartist: str|None
-	album: str|None
-	discnumber: str|int|None
-	tracknumber: str|None
-	title: str|None
-	date: str|None
-	duration: str|int|None
-	musicbrainz_trackid: str|None
+	artist: Optional[str]
+	albumartist: Optional[str]
+	album: Optional[str]
+	discnumber: Optional[Union[str, int]]
+	tracknumber: Optional[str]
+	title: Optional[str]
+	date: Optional[str]
+	duration: Optional[Union[str, int]]
+	musicbrainz_trackid: Optional[str]
 	cur_time: float
 
 
@@ -179,7 +183,7 @@ def build_parser(args_type: type[Args],
 	type_hints = get_type_hints(args_type, include_extras=True)
 	for field in dataclasses.fields(args_type):
 		hint = type_hints[field.name]
-		arg_def: ArgDef|None = None
+		arg_def: Optional[ArgDef] = None
 		base_type = hint
 		if get_origin(hint) is Annotated:
 			args = get_args(hint)
@@ -191,12 +195,12 @@ def build_parser(args_type: type[Args],
 			raise ValueError(f'Missing ArgDef for {field.name}')
 		arg_type = base_type
 		origin = get_origin(base_type)
-		if origin in {Union, UnionType}:
+		if origin is Union:
 			args = get_args(base_type)
-			if len(args)!=2 or NoneType not in args:
+			if len(args)!=2 or type(None) not in args:
 				raise ValueError(
 				    f'Unsupported union type for {field.name}: {base_type}')
-			arg_type = args[0] if args[1] is NoneType else args[1]
+			arg_type = args[0] if args[1] is type(None) else args[1]
 		if arg_def.action in {'store_true', 'store_false'}:
 			if arg_type is not bool:
 				raise ValueError(
@@ -290,11 +294,11 @@ def make_http_env(
     *,
     service_config: ServiceConfig,
     defaults: AppDefaults,
-    session_key: str|None,
+    session_key: Optional[str],
     logger: logging.Logger,
 ) -> HttpEnv:
 
-	def is_json_value(value: object) -> TypeGuard[JSONValue]:
+	def is_json_value(value: JSONValue) -> TypeGuard[JSONValue]:
 		if value is None or isinstance(value, (str, int, float, bool)):
 			return True
 		if isinstance(value, list):
@@ -309,12 +313,12 @@ def make_http_env(
 	    api_url: str,
 	    api_key: str,
 	    ignore_request_fail: bool,
-	    shared_secret: str|None,
-	    method: str|None,
+	    shared_secret: Optional[str],
+	    method: Optional[str],
 	    xml: bool,
-	    timeout_secs: float|None,
-	    params: dict[str, str|None]|None,
-	) -> JSONValue|str|None:
+	    timeout_secs: Optional[float],
+	    params: Optional[dict[str, Optional[str]]],
+	) -> JSONValue:
 
 		def safe_utf8_encode(text: str) -> bytes:
 			try:
@@ -371,7 +375,7 @@ def make_http_env(
 				if not payload:
 					return None
 				if not xml:
-					loaded: object = json.loads(payload)
+					loaded = json.loads(payload)
 					if not is_json_value(loaded):
 						raise ValueError('Unexpected JSON response.')
 					return loaded
@@ -384,13 +388,12 @@ def make_http_env(
 
 	def auth() -> dict[str, str]:
 
-		def require_text(value: JSONValue|str|None, label: str) -> str:
+		def require_text(value: JSONValue, label: str) -> str:
 			if not isinstance(value, str):
 				raise ValueError(f'Missing {label} in response.')
 			return value
 
-		def require_dict(value: JSONValue|str|None,
-		                 label: str) -> dict[str, JSONValue]:
+		def require_dict(value: JSONValue, label: str) -> dict[str, JSONValue]:
 			if not isinstance(value, dict):
 				raise ValueError(f'Missing {label} in response.')
 			return value
@@ -441,7 +444,7 @@ def make_http_env(
 	def scrobble(status_updates: list[Status]) -> None:
 
 		def make_scrobble(i: int,
-		                  status_update: Status) -> dict[str, str|None]:
+		                  status_update: Status) -> dict[str, Optional[str]]:
 			return {
 			    f'artist[{i}]':
 			    status_update.artist,
@@ -472,7 +475,7 @@ def make_http_env(
 		]
 		if not playing_updates:
 			return
-		batch_scrobble_request: dict[str, str|None] = {'sk': session_key}
+		batch_scrobble_request: dict[str, Optional[str]] = {'sk': session_key}
 		for i, status_update in enumerate(playing_updates):
 			batch_scrobble_request.update(make_scrobble(i, status_update))
 		send_req(
@@ -545,7 +548,7 @@ def parse_cmus_status_line(parts: Sequence[str],
 	logger.info(parts)
 	cur_time = datetime.datetime.now(datetime.timezone.utc).timestamp()
 	musicbrainz_trackid = None
-	discnumber: str|int|None = 1
+	discnumber: Optional[Union[str, int]] = 1
 	tracknumber = None
 	date = None
 	album = None
@@ -554,7 +557,7 @@ def parse_cmus_status_line(parts: Sequence[str],
 	status = ''
 	file = ''
 	title = None
-	duration: str|int|None = None
+	duration: Optional[Union[str, int]] = None
 	for key, value in zip(parts[::2], parts[1::2]):
 		if key=='cur_time':
 			try:
@@ -609,7 +612,7 @@ def calculate_scrobbles(
 	def has_played_enough(
 	    start_ts: float,
 	    end_ts: float,
-	    duration_value: str|int|None,
+	    duration_value: Optional[Union[str, int]],
 	    played_before_pause: float = 0.0,
 	) -> bool:
 		if duration_value is None:
@@ -642,7 +645,7 @@ def calculate_scrobbles(
 	# I am incapable of having simple thoughts. The pause is messing me up.
 	# I use these two variables to scrobble paused tracks.
 	played_before_pause = 0.0
-	played_before_pause_status: Status|None = None
+	played_before_pause_status: Optional[Status] = None
 	for cur, nxt, nxt2 in it.zip_longest(lsus, lsus[1:], lsus[2:]):
 		if cur.status in [STATUS_STOPPED, STATUS_PAUSED]:
 			continue
@@ -709,7 +712,7 @@ def run_update_scrobble_state(
 	env.db.save_status_updates(failed_scrobbles+leftovers)
 
 
-def setup_logging(log_path: str|None) -> None:
+def setup_logging(log_path: Optional[str]) -> None:
 	tmp_dir = '/tmp'
 	for name in ['TMPDIR', 'TEMP', 'TEMPDIR', 'TMP']:
 		value = os.environ.get(name)

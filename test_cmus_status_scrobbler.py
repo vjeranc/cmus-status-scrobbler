@@ -15,7 +15,7 @@ import unittest
 import urllib.parse as up
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Callable
+from typing import Callable, Optional
 
 from cmus_status_scrobbler import STATUS_PLAYING, Status
 PYTHON_EXECUTABLE = sys.executable
@@ -41,7 +41,7 @@ class StubScrobblerServer:
 
 	def __init__(self,
 	             xml: bool = False,
-	             fail_methods: set[str]|None = None) -> None:
+	             fail_methods: Optional[set[str]] = None) -> None:
 		state = ServerState(
 		    xml=xml,
 		    requests=[],
@@ -128,7 +128,7 @@ class E2ETestBase(unittest.TestCase):
 
 	def write_ini(self,
 	              base_url: str,
-	              session_key: str|None = 'TEST_SK',
+	              session_key: Optional[str] = 'TEST_SK',
 	              format_xml: bool = False,
 	              now_playing: bool = False) -> None:
 		with open(self.ini_path, 'w') as f:
@@ -163,7 +163,7 @@ class E2ETestBase(unittest.TestCase):
 	    status: str,
 	    file_name: str,
 	    duration: int,
-	    title: str|None = None,
+	    title: Optional[str] = None,
 	) -> None:
 		self.run_scrobbler(
 		    '--cur-time',
