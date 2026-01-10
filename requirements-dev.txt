@@ -2,3 +2,5 @@ yapf
 pycodestyle
 python-language-server
 flake8
+mypy
+pyright
