@@ -8,7 +8,7 @@ import logging
 import os
 import sqlite3
 import unittest
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from cmus_status_scrobbler import (
     STATUS_PAUSED,
@@ -338,6 +338,31 @@ class TestStatusDB(unittest.TestCase):
 		)
 		run_update_scrobble_state(env, new_su, 50)
 
+	def update_scrobble_state_with_scrobble(
+	    self,
+	    new_su: Status,
+	    scrobble: Callable[[list[Status]], None],
+	    batch_size: int,
+	) -> None:
+
+		def noop_send_now_playing(_status: Status) -> None:
+			return None
+
+		def noop_auth() -> dict[str, str]:
+			raise AssertionError('auth should not be called in DB tests.')
+
+		http_env = HttpEnv(
+		    auth=noop_auth,
+		    scrobble=scrobble,
+		    send_now_playing=noop_send_now_playing,
+		)
+		env = ScrobblingEnv(
+		    http=http_env,
+		    db=self.db_env,
+		    logger=logging.getLogger('test'),
+		)
+		run_update_scrobble_state(env, new_su, batch_size)
+
 	def test_update(self) -> None:
 		d = datetime.datetime.now()
 		sus = [
@@ -379,6 +404,76 @@ class TestStatusDB(unittest.TestCase):
 			self.update_scrobble_state(new_su)
 			n_sus = self.db_env.get_status_updates()
 			self.assertArrayEqual([new_su], n_sus)
+
+	def test_scrobble_batching_calls(self) -> None:
+		d = datetime.datetime.now()
+		sus = [
+		    make_status(cur_time=d,
+		                duration=1,
+		                file='A',
+		                status=STATUS_PLAYING),
+		    make_status(cur_time=d+secs(2),
+		                duration=1,
+		                file='B',
+		                status=STATUS_PLAYING),
+		    make_status(cur_time=d+secs(4),
+		                duration=1,
+		                file='C',
+		                status=STATUS_PLAYING),
+		]
+		new_su = make_status(cur_time=d+secs(6),
+		                     duration=1,
+		                     file='D',
+		                     status=STATUS_PLAYING)
+		batches: list[list[Status]] = []
+
+		def record_scrobble(status_updates: list[Status]) -> None:
+			batches.append(status_updates)
+
+		with self.con:
+			self.db_env.save_status_updates(sus)
+			self.update_scrobble_state_with_scrobble(new_su,
+			                                         record_scrobble,
+			                                         batch_size=2)
+			self.assertEqual([2, 1], [len(batch) for batch in batches])
+			n_sus = self.db_env.get_status_updates()
+			self.assertArrayEqual([new_su], n_sus)
+
+	def test_scrobble_partial_batch_failure_keeps_remaining(self) -> None:
+		d = datetime.datetime.now()
+		sus = [
+		    make_status(cur_time=d,
+		                duration=1,
+		                file='A',
+		                status=STATUS_PLAYING),
+		    make_status(cur_time=d+secs(2),
+		                duration=1,
+		                file='B',
+		                status=STATUS_PLAYING),
+		    make_status(cur_time=d+secs(4),
+		                duration=1,
+		                file='C',
+		                status=STATUS_PLAYING),
+		]
+		new_su = make_status(cur_time=d+secs(6),
+		                     duration=1,
+		                     file='D',
+		                     status=STATUS_PLAYING)
+		call_count = 0
+
+		def scrobble_with_failure(status_updates: list[Status]) -> None:
+			nonlocal call_count
+			call_count += 1
+			if call_count==2:
+				raise RuntimeError('Batch failure')
+
+		with self.con:
+			self.db_env.save_status_updates(sus)
+			self.update_scrobble_state_with_scrobble(new_su,
+			                                         scrobble_with_failure,
+			                                         batch_size=2)
+			n_sus = self.db_env.get_status_updates()
+			self.assertArrayEqual([sus[2], new_su], n_sus)
 
 
 if __name__=='__main__':
