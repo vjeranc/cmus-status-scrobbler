@@ -334,7 +334,8 @@ class TestStatusDB(unittest.TestCase):
 		env = ScrobblingEnv(
 		    http=http_env,
 		    db=self.db_env,
-		    logger=logging.getLogger('test'),
+		    logger=logging.LoggerAdapter(logging.getLogger('test'),
+		                                 {'service': 'test'}),
 		)
 		run_update_scrobble_state(env, new_su, 50)
 
@@ -359,7 +360,8 @@ class TestStatusDB(unittest.TestCase):
 		env = ScrobblingEnv(
 		    http=http_env,
 		    db=self.db_env,
-		    logger=logging.getLogger('test'),
+		    logger=logging.LoggerAdapter(logging.getLogger('test'),
+		                                 {'service': 'test'}),
 		)
 		run_update_scrobble_state(env, new_su, batch_size)
 

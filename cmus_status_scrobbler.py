@@ -296,7 +296,7 @@ def make_http_env(
     service_config: ServiceConfig,
     defaults: AppDefaults,
     session_key: Optional[str],
-    logger: logging.Logger,
+    logger: logging.LoggerAdapter[logging.Logger],
 ) -> HttpEnv:
 
 	def is_json_value(value: JSONValue) -> TypeGuard[JSONValue]:
@@ -311,14 +311,11 @@ def make_http_env(
 		return False
 
 	def send_req(
-	    api_url: str,
-	    api_key: str,
+	    *,
 	    ignore_request_fail: bool,
-	    shared_secret: Optional[str],
-	    method: Optional[str],
-	    xml: bool,
+	    method: str,
 	    timeout_secs: Optional[float],
-	    params: Optional[dict[str, Optional[str]]],
+	    params: dict[str, Optional[str]],
 	) -> JSONValue:
 
 		def safe_utf8_encode(text: str) -> bytes:
@@ -342,26 +339,26 @@ def make_http_env(
 			    for key, value in data.items()
 			}
 
-		merged: dict[str, str] = {'api_key': api_key}
-		if method is not None:
-			merged['method'] = method
-		if params:
-			for key, value in params.items():
-				if value is None:
-					continue
-				merged[key] = value
+		merged: dict[str, str] = {
+		    'api_key': service_config.api_key,
+		    'method': method,
+		}
+		for key, value in params.items():
+			if value is None:
+				continue
+			merged[key] = value
 
 		encoded_params = {
 		    safe_utf8_encode(key): safe_utf8_encode(value)
 		    for key, value in merged.items()
 		}
-		if shared_secret:
+		if method!=SCROBBLER_GET_TOKEN:
 			encoded_params[b'api_sig'] = safe_utf8_encode(
-			    get_api_sig(encoded_params, shared_secret))
-		if not xml:
+			    get_api_sig(encoded_params, service_config.shared_secret))
+		if not service_config.format_xml:
 			encoded_params[b'format'] = b'json'
 		logger.info(redact_dict(encoded_params))
-		api_req = ur.Request(api_url,
+		api_req = ur.Request(service_config.api_url,
 		                     headers={'User-Agent': defaults.http_user_agent})
 		timeout = (defaults.http_default_timeout_secs
 		           if timeout_secs is None else timeout_secs)
@@ -375,7 +372,7 @@ def make_http_env(
 				logger.info(payload)
 				if not payload:
 					return None
-				if not xml:
+				if not service_config.format_xml:
 					loaded = json.loads(payload)
 					if not is_json_value(loaded):
 						raise ValueError('Unexpected JSON response.')
@@ -400,14 +397,10 @@ def make_http_env(
 			return value
 
 		token_response = send_req(
-		    service_config.api_url,
-		    service_config.api_key,
-		    False,
-		    None,
-		    SCROBBLER_GET_TOKEN,
-		    service_config.format_xml,
-		    None,
-		    {},
+		    ignore_request_fail=False,
+		    method=SCROBBLER_GET_TOKEN,
+		    timeout_secs=None,
+		    params={},
 		)
 		if service_config.format_xml:
 			token_payload = require_text(token_response, 'token')
@@ -420,14 +413,10 @@ def make_http_env(
 		      up.urlencode(dict(token=token, api_key=service_config.api_key)))
 		input('Press <Enter> after visiting the link and allowing access...')
 		session_response = send_req(
-		    service_config.api_url,
-		    service_config.api_key,
-		    False,
-		    service_config.shared_secret,
-		    SCROBBLER_GET_SESSION,
-		    service_config.format_xml,
-		    None,
-		    {'token': token},
+		    ignore_request_fail=False,
+		    method=SCROBBLER_GET_SESSION,
+		    timeout_secs=None,
+		    params={'token': token},
 		)
 		if service_config.format_xml:
 			session_payload = require_text(session_response, 'session')
@@ -480,14 +469,10 @@ def make_http_env(
 		for i, status_update in enumerate(playing_updates):
 			batch_scrobble_request.update(make_scrobble(i, status_update))
 		send_req(
-		    service_config.api_url,
-		    service_config.api_key,
-		    False,
-		    service_config.shared_secret,
-		    SCROBBLER_SCROBBLE,
-		    service_config.format_xml,
-		    defaults.http_scrobble_timeout_secs,
-		    batch_scrobble_request,
+		    ignore_request_fail=False,
+		    method=SCROBBLER_SCROBBLE,
+		    timeout_secs=defaults.http_scrobble_timeout_secs,
+		    params=batch_scrobble_request,
 		)
 
 	def send_now_playing(cur: Status) -> None:
@@ -506,14 +491,10 @@ def make_http_env(
 		    sk=session_key,
 		)
 		send_req(
-		    service_config.api_url,
-		    service_config.api_key,
-		    True,
-		    service_config.shared_secret,
-		    SCROBBLER_NOW_PLAYING,
-		    service_config.format_xml,
-		    None,
-		    params,
+		    ignore_request_fail=True,
+		    method=SCROBBLER_NOW_PLAYING,
+		    timeout_secs=None,
+		    params=params,
 		)
 
 	return HttpEnv(
@@ -527,7 +508,7 @@ def make_http_env(
 class ScrobblingEnv:
 	http: HttpEnv
 	db: DBEnv
-	logger: logging.Logger
+	logger: logging.LoggerAdapter[logging.Logger]
 
 
 def make_scrobbling_env(
@@ -535,7 +516,7 @@ def make_scrobbling_env(
     con: sqlite3.Connection,
     http_env: HttpEnv,
     table_name: str,
-    logger: logging.Logger,
+    logger: logging.LoggerAdapter[logging.Logger],
 ) -> ScrobblingEnv:
 	return ScrobblingEnv(
 	    http=http_env,
@@ -544,8 +525,10 @@ def make_scrobbling_env(
 	)
 
 
-def parse_cmus_status_line(parts: Sequence[str],
-                           logger: logging.Logger) -> Status:
+def parse_cmus_status_line(
+    parts: Sequence[str],
+    logger: logging.LoggerAdapter[logging.Logger],
+) -> Status:
 	logger.info(parts)
 	cur_time = datetime.datetime.now(datetime.timezone.utc).timestamp()
 	musicbrainz_trackid = None
@@ -723,7 +706,8 @@ def setup_logging(log_path: Optional[str]) -> None:
 	logging.basicConfig(
 	    filename=log_path or os.path.join(tmp_dir, 'cmus_scrobbler.log'),
 	    datefmt='%Y-%m-%d %H:%M:%S',
-	    format='%(process)d %(asctime)s %(levelname)s %(name)s %(message)s',
+	    format=
+	    '%(process)d %(asctime)s %(levelname)s %(name)s %(service)s %(message)s',
 	    level=logging.DEBUG,
 	)
 
@@ -816,7 +800,7 @@ def db_connect(
     connect_timeout: int,
     retry_attempts: int,
     retry_sleep_secs: int,
-    logger: logging.Logger,
+    logger: logging.LoggerAdapter[logging.Logger],
 ) -> sqlite3.Connection:
 	con = sqlite3.connect(db_path, timeout=connect_timeout)
 	if log_db:
@@ -848,7 +832,7 @@ def run_auth(
     http_env: HttpEnv,
     conf: configparser.ConfigParser,
     service_name: str,
-    logger: logging.Logger,
+    logger: logging.LoggerAdapter[logging.Logger],
 ) -> configparser.ConfigParser:
 	try:
 		conf[service_name].update(http_env.auth())
@@ -881,9 +865,14 @@ def main() -> None:
 	)
 	setup_logging(args.log_path or app_config.global_config.log_path)
 	logger = logging.getLogger('cmus_status_scrobbler')
+	base_logger = logging.LoggerAdapter(logger, {'service': '-'})
 	if args.auth:
 		with open(conf_path, 'w') as handle:
 			for service_config in app_config.services:
+				service_logger = logging.LoggerAdapter(
+				    logger,
+				    {'service': service_config.name},
+				)
 				if service_config.session_key is not None:
 					print(
 					    f'Session key already active for {service_config.name}. Skipping...'
@@ -893,12 +882,12 @@ def main() -> None:
 				    service_config=service_config,
 				    defaults=defaults,
 				    session_key=None,
-				    logger=logger,
+				    logger=service_logger,
 				)
-				run_auth(http_env, conf, service_config.name, logger)
+				run_auth(http_env, conf, service_config.name, service_logger)
 			conf.write(handle)
 		return
-	status = parse_cmus_status_line(rest, logger)
+	status = parse_cmus_status_line(rest, base_logger)
 	if args.cur_time is not None:
 		status = status._replace(cur_time=args.cur_time)
 	with db_connect(
@@ -907,21 +896,25 @@ def main() -> None:
 	    connect_timeout=defaults.db_connect_timeout,
 	    retry_attempts=defaults.db_connect_retry_attempts,
 	    retry_sleep_secs=defaults.db_connect_retry_sleep_secs,
-	    logger=logger,
+	    logger=base_logger,
 	) as con:
-		logger.info(repr(status))
+		base_logger.info(repr(status))
 		for service_config in app_config.services:
+			service_logger = logging.LoggerAdapter(
+			    logger,
+			    {'service': service_config.name},
+			)
 			http_env = make_http_env(
 			    service_config=service_config,
 			    defaults=defaults,
 			    session_key=service_config.session_key,
-			    logger=logger,
+			    logger=service_logger,
 			)
 			env = make_scrobbling_env(
 			    con=con,
 			    http_env=http_env,
 			    table_name=service_config.name,
-			    logger=logger,
+			    logger=service_logger,
 			)
 			run_update_scrobble_state(env, status,
 			                          defaults.scrobble_batch_size)
