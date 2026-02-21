@@ -477,6 +477,47 @@ class TestStatusDB(unittest.TestCase):
 			n_sus = self.db_env.get_status_updates()
 			self.assertArrayEqual([sus[2], new_su], n_sus)
 
+	def test_empty_string_duration_in_history_does_not_block_next_scrobble(
+	    self,
+	) -> None:
+		d = datetime.datetime.now()
+		sus = [
+		    Status(
+		        status=STATUS_PLAYING,
+		        file='A',
+		        artist=None,
+		        albumartist=None,
+		        album=None,
+		        discnumber=1,
+		        tracknumber=None,
+		        title=None,
+		        date=None,
+		        duration='',
+		        musicbrainz_trackid=None,
+		        cur_time=d.timestamp(),
+		    ),
+		    make_status(cur_time=d+secs(2),
+		                duration=1,
+		                file='B',
+		                status=STATUS_PLAYING),
+		]
+		new_su = make_status(cur_time=d+secs(4),
+		                     duration=1,
+		                     file='C',
+		                     status=STATUS_PLAYING)
+		scrobbled: list[Status] = []
+
+		def record_scrobble(status_updates: list[Status]) -> None:
+			scrobbled.extend(status_updates)
+
+		with self.con:
+			self.db_env.save_status_updates(sus)
+			self.update_scrobble_state_with_scrobble(new_su,
+			                                         record_scrobble,
+			                                         batch_size=50)
+			self.assertArrayEqual([sus[1]], scrobbled)
+			self.assertArrayEqual([new_su], self.db_env.get_status_updates())
+
 
 if __name__=='__main__':
 	unittest.main()

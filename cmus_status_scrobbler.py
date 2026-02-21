@@ -165,7 +165,7 @@ class Status(NamedTuple):
 	tracknumber: Optional[str]
 	title: Optional[str]
 	date: Optional[str]
-	duration: Optional[Union[str, int]]
+	duration: Optional[Union[str, int, float]]
 	musicbrainz_trackid: Optional[str]
 	cur_time: float
 
@@ -541,7 +541,7 @@ def parse_cmus_status_line(
 	status = ''
 	file = ''
 	title = None
-	duration: Optional[Union[str, int]] = None
+	duration: Optional[Union[str, int, float]] = None
 	for key, value in zip(parts[::2], parts[1::2]):
 		if key=='cur_time':
 			try:
@@ -570,7 +570,12 @@ def parse_cmus_status_line(
 		elif key=='title':
 			title = value
 		elif key=='duration':
-			duration = value
+			try:
+				duration_float = float(value)
+				duration = duration_float
+			except ValueError:
+				logger.exception(f'given duration is not a number {value}')
+				duration = None
 	return Status(
 	    status=status,
 	    file=file,
@@ -596,12 +601,18 @@ def calculate_scrobbles(
 	def has_played_enough(
 	    start_ts: float,
 	    end_ts: float,
-	    duration_value: Optional[Union[str, int]],
+	    duration_value: Optional[Union[str, int, float]],
 	    played_before_pause: float = 0.0,
 	) -> bool:
 		if duration_value is None:
 			return False
-		duration = int(duration_value)
+		try:
+			duration = float(duration_value)
+		except ValueError:
+			logging.exception(
+			    f'duration in scrobble history is not a number: {duration_value}'
+			)
+			return False
 		total = end_ts-start_ts+played_before_pause
 		return total/duration>=perc_thresh or total>=secs_thresh
 
