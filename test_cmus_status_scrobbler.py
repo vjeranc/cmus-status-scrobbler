@@ -15,7 +15,7 @@ import unittest
 import urllib.parse as up
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 from cmus_status_scrobbler import STATUS_PLAYING, Status
 PYTHON_EXECUTABLE = sys.executable
@@ -162,7 +162,7 @@ class E2ETestBase(unittest.TestCase):
 	    cur_time: int,
 	    status: str,
 	    file_name: str,
-	    duration: int,
+	    duration: Union[int, str],
 	    title: Optional[str] = None,
 	) -> None:
 		self.run_scrobbler(
@@ -383,6 +383,15 @@ class TestScrobbleE2E(E2ETestBase):
 		self.assertEqual([],
 		                 self.get_requests_by_method('track.updateNowPlaying'))
 		self.assertEqual([], self.read_db_updates())
+
+	def test_scrobble_duration_is_positive_integer(self) -> None:
+		base = 1500
+		self.run_status(base, 'playing', 'A', '5.0')
+		self.run_status(base+4, 'stopped', 'A', '5.0')
+		requests = self.get_requests_by_method('track.scrobble')
+		self.assertEqual(1, len(requests))
+		params = requests[0].params
+		self.assert_param(params, 'duration[0]', '5')
 
 	def test_repeat(self) -> None:
 		base = 2000

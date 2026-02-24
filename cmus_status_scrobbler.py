@@ -165,7 +165,7 @@ class Status(NamedTuple):
 	tracknumber: Optional[str]
 	title: Optional[str]
 	date: Optional[str]
-	duration: Optional[Union[str, int, float]]
+	duration: Optional[Union[str, int]]
 	musicbrainz_trackid: Optional[str]
 	cur_time: float
 
@@ -298,6 +298,18 @@ def make_http_env(
     session_key: Optional[str],
     logger: logging.LoggerAdapter[logging.Logger],
 ) -> HttpEnv:
+	def to_positive_duration_text(
+	    duration_value: Optional[Union[str, int]]
+	) -> Optional[str]:
+		if duration_value is None:
+			return None
+		try:
+			duration = int(duration_value)
+		except (TypeError, ValueError):
+			return None
+		if duration<=0:
+			return None
+		return str(duration)
 
 	def is_json_value(value: JSONValue) -> TypeGuard[JSONValue]:
 		if value is None or isinstance(value, (str, int, float, bool)):
@@ -452,8 +464,7 @@ def make_http_env(
 			    status_update.albumartist
 			    if status_update.artist!=status_update.albumartist else None,
 			    f'duration[{i}]':
-			    None if status_update.duration is None else str(
-			        status_update.duration),
+			    to_positive_duration_text(status_update.duration),
 			}
 
 		if not status_updates:
@@ -484,7 +495,7 @@ def make_http_env(
 		    track=cur.title,
 		    album=cur.album,
 		    trackNumber=cur.tracknumber,
-		    duration=None if cur.duration is None else str(cur.duration),
+		    duration=to_positive_duration_text(cur.duration),
 		    albumArtist=cur.albumartist
 		    if cur.artist!=cur.albumartist else None,
 		    mbid=cur.musicbrainz_trackid,
@@ -541,7 +552,7 @@ def parse_cmus_status_line(
 	status = ''
 	file = ''
 	title = None
-	duration: Optional[Union[str, int, float]] = None
+	duration: Optional[Union[str, int]] = None
 	for key, value in zip(parts[::2], parts[1::2]):
 		if key=='cur_time':
 			try:
@@ -571,8 +582,7 @@ def parse_cmus_status_line(
 			title = value
 		elif key=='duration':
 			try:
-				duration_float = float(value)
-				duration = duration_float
+				duration = int(float(value))
 			except ValueError:
 				logger.exception(f'given duration is not a number {value}')
 				duration = None
