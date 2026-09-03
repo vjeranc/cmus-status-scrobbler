@@ -623,6 +623,8 @@ def calculate_scrobbles(
 			    f'duration in scrobble history is not a number: {duration_value}'
 			)
 			return False
+		if duration<=0:
+			return False
 		total = end_ts-start_ts+played_before_pause
 		return total/duration>=perc_thresh or total>=secs_thresh
 
