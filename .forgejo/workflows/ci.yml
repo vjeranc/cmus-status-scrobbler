@@ -18,13 +18,10 @@ jobs:
       UV_PYTHON: ${{ matrix.python-version }}
     steps:
       - name: Checkout from Forgejo
-        env:
-          FORGEJO_TOKEN: ${{ forgejo.token }}
-        run: |
-          set -eu
-          git -c http.extraheader="Authorization: token ${FORGEJO_TOKEN}" \
-            clone --no-checkout "http://127.0.0.1:3000/${GITHUB_REPOSITORY}.git" .
-          git checkout --detach "$GITHUB_SHA"
+        uses: actions/checkout@v4
+        with:
+          github-server-url: ${{ env.CI_FORGE_URL }}
+          persist-credentials: false
 
       - name: Create Python environment
         run: uv venv --python "$UV_PYTHON" .venv
