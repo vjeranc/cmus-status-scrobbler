@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Python ${{ matrix.python-version }}
+    runs-on: host
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+    steps:
+      - name: Checkout from Forgejo
+        env:
+          FORGEJO_TOKEN: ${{ forgejo.token }}
+        run: |
+          set -eu
+          git -c http.extraheader="Authorization: token ${FORGEJO_TOKEN}" \
+            clone --no-checkout "http://127.0.0.1:3000/${GITHUB_REPOSITORY}.git" .
+          git checkout --detach "$GITHUB_SHA"
+
+      - name: Create Python environment
+        run: uv venv --python "$UV_PYTHON" .venv
+
+      - name: Run tests
+        run: make test PYTHON=.venv/bin/python
+
+      - name: Install typecheck dependencies
+        run: uv pip install --python .venv/bin/python -r requirements-dev.txt
+
+      - name: Run typecheck
+        run: make typecheck PYTHON=.venv/bin/python

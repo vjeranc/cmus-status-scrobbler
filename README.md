@@ -1,6 +1,7 @@
 # cmus-status-scrobbler
 
 ![tests passing status](https://github.com/vjeranc/cmus-status-scrobbler/actions/workflows/ci.yml/badge.svg?branch=main)
+[![Forgejo checks](https://forgejo.crnjak.xyz/vjeranc/cmus-status-scrobbler/actions/workflows/ci.yml/badge.svg?branch=main)](https://forgejo.crnjak.xyz/vjeranc/cmus-status-scrobbler/actions)
 
 Works with [cmus](https://cmus.github.io/). Requires Python 3.9+ and has no
 additional dependencies.
