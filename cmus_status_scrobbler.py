@@ -298,9 +298,9 @@ def make_http_env(
     session_key: Optional[str],
     logger: logging.LoggerAdapter[logging.Logger],
 ) -> HttpEnv:
+
 	def to_positive_duration_text(
-	    duration_value: Optional[Union[str, int]]
-	) -> Optional[str]:
+	        duration_value: Optional[Union[str, int]]) -> Optional[str]:
 		if duration_value is None:
 			return None
 		try:
@@ -608,91 +608,92 @@ def calculate_scrobbles(
     secs_thresh: int = 4*60,
 ) -> tuple[list[Status], list[Status]]:
 
-	def has_played_enough(
-	    start_ts: float,
-	    end_ts: float,
-	    duration_value: Optional[Union[str, int, float]],
-	    played_before_pause: float = 0.0,
-	) -> bool:
-		if duration_value is None:
+	@dataclass
+	class OpenPlay:
+		first: Status
+		start_idx: int
+		played: float = 0.0
+		playing_since: float|None = None
+
+	def played_enough(play: OpenPlay) -> bool:
+		if play.first.duration is None:
 			return False
+
 		try:
-			duration = float(duration_value)
-		except ValueError:
-			logging.exception(
-			    f'duration in scrobble history is not a number: {duration_value}'
-			)
+			duration = float(play.first.duration)
+		except (TypeError, ValueError):
 			return False
+
 		if duration<=0:
 			return False
-		total = end_ts-start_ts+played_before_pause
-		return total/duration>=perc_thresh or total>=secs_thresh
 
-	def equal_tracks(first: Status, second: Status) -> bool:
-		return first.file==second.file
+		required = min(duration*perc_thresh, secs_thresh)
+		return play.played>=required
 
-	def get_prefix_end_exclusive_idx(sus: Sequence[Status]) -> int:
-		r_su = list(reversed(sus))
-		for i, (cur, prv) in enumerate(zip(r_su, r_su[1:])):
-			if (cur.status==STATUS_STOPPED or not equal_tracks(cur, prv)
-			    or cur.status==prv.status or prv.status==STATUS_STOPPED):
-				return len(r_su)-i
-		return 0  # all statuses do not result in a scrobble
+	events = sorted(status_updates, key=attrgetter("cur_time"))
 
 	scrobbles: list[Status] = []
-	leftovers: list[Status] = []
-	if not status_updates or len(status_updates)==1:
-		return scrobbles, list(status_updates)
+	current: OpenPlay|None = None
 
-	# if status updates array has a suffix of playing/paused updates with same
-	# track, then these tracks need to be immediatelly leftovers
-	sus = sorted(status_updates, key=attrgetter('cur_time'))
-	prefix_end = get_prefix_end_exclusive_idx(sus)
-	lsus = sus[:prefix_end]
-	# I am incapable of having simple thoughts. The pause is messing me up.
-	# I use these two variables to scrobble paused tracks.
-	played_before_pause = 0.0
-	played_before_pause_status: Optional[Status] = None
-	for cur, nxt, nxt2 in it.zip_longest(lsus, lsus[1:], lsus[2:]):
-		if cur.status in [STATUS_STOPPED, STATUS_PAUSED]:
-			continue
-		if nxt is None:
-			leftovers.append(cur)
-			break
-		played_enough = has_played_enough(
-		    cur.cur_time,
-		    nxt.cur_time,
-		    cur.duration,
-		    played_before_pause=played_before_pause
-		    if played_before_pause_status
-		    and equal_tracks(played_before_pause_status, cur) else 0.0,
+	def start(event: Status, i: int) -> OpenPlay:
+		return OpenPlay(
+		    first=event,
+		    start_idx=i,
+		    playing_since=event.cur_time,
 		)
 
-		if (not equal_tracks(cur, nxt)
-		    or nxt.status in [STATUS_STOPPED, STATUS_PLAYING]):
-			if played_enough:
-				scrobbles.append(cur)
-			played_before_pause = 0.0
-			played_before_pause_status = None
+	def finish() -> None:
+		nonlocal current
+
+		if current is not None and played_enough(current):
+			scrobbles.append(current.first)
+
+		current = None
+
+	for i, event in enumerate(events):
+		if current is None:
+			if event.status==STATUS_PLAYING:
+				current = start(event, i)
 			continue
 
-		# files are equal and nxt status paused
-		if nxt2 is None:
-			leftovers.append(cur)
-			leftovers.append(nxt)
+		same_track = event.file==current.first.file
+
+		# Close the interval since the last PLAYING transition.
+		if current.playing_since is not None:
+			current.played += event.cur_time-current.playing_since
+
+			if same_track and event.status==STATUS_PAUSED:
+				# Same logical play, now paused.
+				current.playing_since = None
+				continue
+
+			# Anything else ended this playing segment/session.
+			finish()
+
+			if event.status==STATUS_PLAYING:
+				current = start(event, i)
+
 			continue
 
-		if equal_tracks(cur, nxt2) and nxt2.status==STATUS_PLAYING:
-			# playing continued, keeping already played time for next
-			played_before_pause += nxt.cur_time-cur.cur_time
-			played_before_pause_status = cur if not played_before_pause_status else played_before_pause_status
-			continue
-		# playing did not continue, nxt2 file is not None and it's either a
-		# different file or it's the same file but status is not playing
-		# in this case we just check if played enough otherwise no scrobble
-		if played_enough:
-			scrobbles.append(played_before_pause_status or cur)
-	return scrobbles, leftovers+sus[prefix_end:]
+		# We're currently paused.
+		if same_track and event.status==STATUS_PLAYING:
+			# Resume the same logical play.
+			current.playing_since = event.cur_time
+
+		elif same_track and event.status==STATUS_PAUSED:
+			# Duplicate pause: naturally idempotent.
+			pass
+
+		else:
+			# Stop, track change, etc.
+			finish()
+
+			if event.status==STATUS_PLAYING:
+				current = start(event, i)
+
+	leftovers = (events[current.start_idx:] if current is not None else [])
+
+	return scrobbles, leftovers
 
 
 def run_update_scrobble_state(

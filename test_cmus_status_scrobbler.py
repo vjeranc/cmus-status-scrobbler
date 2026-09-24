@@ -424,6 +424,68 @@ class TestScrobbleE2E(E2ETestBase):
 		updates = self.read_db_updates()
 		self.assertEqual(2, len(updates))
 
+	def test_transition_matrix_matches_incremental_runs_at_every_split(
+	    self) -> None:
+		cases = [
+		    ([('playing', 'A', 0), ('stopped', 'A', 60)], [0], []),
+		    ([('playing', 'A', 0), ('playing', 'B', 60)], [0], [1]),
+		    ([('playing', 'A', 0), ('playing', 'A', 60)], [0], [1]),
+		    ([('playing', 'A', 0), ('paused', 'A', 50),
+		      ('playing', 'A', 100), ('stopped', 'A', 110)], [0], []),
+		    ([('playing', 'A', 0), ('paused', 'A', 50),
+		      ('playing', 'B', 100)], [0], [2]),
+		    ([('playing', 'A', 0), ('paused', 'A', 50),
+		      ('stopped', 'A', 100)], [0], []),
+		    ([('playing', 'A', 0), ('paused', 'A', 20),
+		      ('paused', 'A', 30), ('playing', 'A', 40),
+		      ('stopped', 'A', 70)], [0], []),
+		    ([('playing', 'A', 0), ('paused', 'A', 50)], [], [0, 1]),
+		    ([('playing', 'A', 0), ('paused', 'A', 20),
+		      ('playing', 'A', 40), ('paused', 'A', 60),
+		      ('playing', 'A', 80), ('stopped', 'A', 110)], [0], []),
+		]
+		base = 10000
+		for case_idx, (transitions, expected_scrobble_indices,
+		               expected_leftover_indices) in enumerate(cases):
+			events = [
+			    (status, file_name, base+case_idx*1000+timestamp)
+			    for status, file_name, timestamp in transitions
+			]
+			with self.subTest(transitions=transitions):
+				def run_events(tag: str, split: int) -> tuple[
+				    list[tuple[str, str]], list[tuple[str, str, int]]
+				]:
+					self.db_path = os.path.join(
+					    self.temp_dir.name, f'{case_idx}-{tag}.sqlite3')
+					self.write_ini(self.server.base_url, session_key='TEST_SK')
+					request_offset = len(self.server.get_requests())
+					for chunk in (events[:split], events[split:]):
+						for status, file_name, timestamp in chunk:
+							self.run_status(timestamp, status, file_name, 100)
+					new_requests = self.server.get_requests()[request_offset:]
+					scrobble_items = [
+					    item
+					    for request in new_requests
+					    if request.params.get('method', [''])[0]=='track.scrobble'
+					    for item in self.get_scrobble_items(request.params)
+					]
+					leftovers = [
+					    (event.file, event.status, int(event.cur_time))
+					    for event in self.read_db_updates()
+					]
+					return scrobble_items, leftovers
+
+				whole_result = run_events('whole', len(events))
+				self.assertEqual(
+				    [(events[i][1], str(events[i][2]))
+				     for i in expected_scrobble_indices], whole_result[0])
+				self.assertEqual(
+				    [(events[i][1], events[i][0], events[i][2])
+				     for i in expected_leftover_indices], whole_result[1])
+				for split in range(len(events)+1):
+					incremental_result = run_events(f'split-{split}', split)
+					self.assertEqual(whole_result, incremental_result)
+
 	def test_play_pause_stopped(self) -> None:
 		base = 4000
 		self.run_status(base, 'playing', 'A', 5)

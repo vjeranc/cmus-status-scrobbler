@@ -104,6 +104,64 @@ class TestCalculateScrobbles(unittest.TestCase):
 		self.assertEqual(ss[0], leftovers[0])
 		self.assertEqual(ss[1], leftovers[1])
 
+	def test_play_pause_resume_then_change_track_scrobbles(self) -> None:
+		d = utcnow()
+		ss = [
+		    SS(cur_time=d, duration=100, file='A', status=STATUS_PLAYING),
+		    SS(cur_time=d+secs(50),
+		       duration=100,
+		       file='A',
+		       status=STATUS_PAUSED),
+		    SS(cur_time=d+secs(100),
+		       duration=100,
+		       file='A',
+		       status=STATUS_PLAYING),
+		    SS(cur_time=d+secs(110),
+		       duration=100,
+		       file='B',
+		       status=STATUS_PLAYING),
+		]
+		scrobbles, _leftovers = calculate_scrobbles(ss)
+		self.assertEqual([ss[0]], scrobbles)
+		self.assertEqual(ss[0].cur_time, scrobbles[0].cur_time)
+
+	def test_transition_matrix_and_incremental_results(self) -> None:
+		d = utcnow()
+		cases = [
+		    ([('playing', 'A', 0), ('stopped', 'A', 60)], [0]),
+		    ([('playing', 'A', 0), ('playing', 'B', 60)], [0]),
+		    ([('playing', 'A', 0), ('playing', 'A', 60)], [0]),
+		    ([('playing', 'A', 0), ('paused', 'A', 50),
+		      ('playing', 'A', 100), ('stopped', 'A', 110)], [0]),
+		    ([('playing', 'A', 0), ('paused', 'A', 50),
+		      ('playing', 'B', 100)], [0]),
+		    ([('playing', 'A', 0), ('paused', 'A', 50),
+		      ('stopped', 'A', 100)], [0]),
+		    ([('playing', 'A', 0), ('paused', 'A', 20),
+		      ('paused', 'A', 30), ('playing', 'A', 40),
+		      ('stopped', 'A', 70)], [0]),
+		    ([('playing', 'A', 0), ('paused', 'A', 50)], []),
+		    ([('playing', 'A', 0), ('paused', 'A', 20),
+		      ('playing', 'A', 40), ('paused', 'A', 60),
+		      ('playing', 'A', 80), ('stopped', 'A', 110)], [0]),
+		]
+		for transitions, expected_scrobble_indices in cases:
+			with self.subTest(transitions=transitions):
+				events = [
+				    SS(cur_time=d+secs(timestamp),
+				       duration=100,
+				       file=file_name,
+				       status=status)
+				    for status, file_name, timestamp in transitions
+				]
+				whole_scrobbles, whole_leftovers = calculate_scrobbles(events)
+				expected_scrobbles = [events[i] for i in expected_scrobble_indices]
+				self.assertEqual(expected_scrobbles, whole_scrobbles)
+				self.assertEqual(
+				    [event.cur_time for event in expected_scrobbles],
+				    [event.cur_time for event in whole_scrobbles],
+				)
+
 	def test_play_pause_stopped(self) -> None:
 		d = utcnow()
 		ss = [
@@ -478,8 +536,7 @@ class TestStatusDB(unittest.TestCase):
 			self.assertArrayEqual([sus[2], new_su], n_sus)
 
 	def test_empty_string_duration_in_history_does_not_block_next_scrobble(
-	    self,
-	) -> None:
+	    self) -> None:
 		d = datetime.datetime.now()
 		sus = [
 		    Status(
@@ -519,8 +576,7 @@ class TestStatusDB(unittest.TestCase):
 			self.assertArrayEqual([new_su], self.db_env.get_status_updates())
 
 	def test_zero_duration_in_history_does_not_block_next_scrobble(
-	    self,
-	) -> None:
+	    self) -> None:
 		d = datetime.datetime.now()
 		sus = [
 		    make_status(cur_time=d,
